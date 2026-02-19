@@ -8,9 +8,11 @@
     <meta name="theme-color" content="#0f172a">
     <title>Flight Diary ✈️</title>
     <link rel="icon" type="image/png" href="logo001.png">
+<link rel="apple-touch-icon" href="logo001.png">
+<meta name="apple-mobile-web-app-title" content="Flight Diary">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiRmxpZ2h0IERpYXJ5Iiwic2hvcnRfbmFtZSI6IkZsaWdodERpYXJ5Iiwic3RhcnRfdXJsIjoiLiIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwZjE3MmEiLCJ0aGVtZV9jb2xvciI6IiMwZjE3MmEiLCJpY29ucyI6W3sic3JjIjoiaHR0cHM6Ly9lbW9qaXMuY29tL2FwaS9pbWcvMWY2ODAud2h0Iiwic2l6ZXMiOiIxOTJ4MTkyIiwidHlwZSI6ImltYWdlL3BuZyJ9XX0=">
+<link rel="manifest" href="manifest.json">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -137,21 +139,27 @@
         
         <!-- Header -->
         <header class="glass safe-top sticky top-0 z-30 px-6 py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                        <i data-lucide="plane" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Flight Diary</h1>
-                        <p class="text-xs text-gray-400" id="header-stats">Chargement...</p>
-                    </div>
-                </div>
-                <button onclick="toggleMenu()" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center btn-press">
-                    <i data-lucide="menu" class="w-5 h-5"></i>
-                </button>
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <!-- Remplace cette div -->
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <i data-lucide="plane" class="w-5 h-5 text-white"></i>
             </div>
-        </header>
+            
+            <!-- Par ton logo -->
+            <img src="logo001.png" alt="Flight Diary" class="w-10 h-10 rounded-xl object-cover">
+            
+            <div>
+                <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Flight Diary</h1>
+                <p class="text-xs text-gray-400" id="header-stats">Chargement...</p>
+            </div>
+        </div>
+        <button onclick="toggleMenu()" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center btn-press">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+    </div>
+</header>
+
 
         <!-- Main Content -->
         <main class="px-4 pt-4 space-y-4">

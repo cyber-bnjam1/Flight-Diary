@@ -2,13 +2,13 @@
 // FIREBASE CONFIGURATION - À REMPLACER
 // ==========================================
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
+    apiKey: "AIzaSyCUmAI6czL0IXczp8FgJL4aOG7B8_aAkHk",
+    authDomain: "flight-diary-6be50.firebaseapp.com",
+    projectId: "flight-diary-6be50",
+    storageBucket: "flight-diary-6be50.firebasestorage.app",
+    messagingSenderId: "417972476833",
+    appId: "1:417972476833:web:bc820c662dc9bb3f7f89e0"
+  };
 
 // Initialize Firebase
 let app, auth, db;

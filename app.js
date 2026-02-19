@@ -1231,3 +1231,8 @@ document.addEventListener('visibilitychange', () => {
         map.invalidateSize();
     }
 });
+
+// Fix pour la notch sur toutes les pages
+document.querySelectorAll('.glass, .modal-content, #menu-drawer').forEach(el => {
+    el.style.paddingTop = 'env(safe-area-inset-top)';
+});

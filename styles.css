@@ -458,3 +458,27 @@ header.glass {
 main {
     margin-top: calc(env(safe-area-inset-top) + 80px);
 }
+
+
+/* MODALES - Ajouter cette section */
+#stats-modal > .glass,
+#airports-modal > .glass,
+#detail-modal > .glass {
+    padding-top: env(safe-area-inset-top);
+}
+
+/* Menu drawer */
+#menu-drawer {
+    padding-top: env(safe-area-inset-top);
+}
+
+/* Safe top générique pour tous les éléments fixes */
+.safe-top {
+    padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+

@@ -485,11 +485,8 @@ function toggleMenu() {
 
 function showAddFlight(isEdit = false) {
     const modal = document.getElementById('add-modal');
-    modal.classList.remove('hidden');
-    const inner = modal.querySelector('.modal-content, .glass');
-    if (inner) { inner.classList.add('modal-animate'); setTimeout(() => inner.classList.remove('modal-animate'), 300); }
-    const modalContent = modal.querySelector('.modal-content');
-    if (modalContent) modalContent.scrollTop = 0;
+
+    // Préparer l'état initial AVANT d'afficher — évite le flash
     if (!isEdit) {
         currentFlightId = null;
         document.getElementById('flight-form').reset();
@@ -502,14 +499,54 @@ function showAddFlight(isEdit = false) {
         document.getElementById('departure-time').value =
             `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     }
+
+    // Trouver le panneau intérieur (la feuille qui monte)
+    const inner = modal.querySelector('.modal-content, .glass');
+
+    // 1. Positionner le panneau hors écran EN BAS avant d'afficher le modal
+    if (inner) {
+        inner.style.transition = 'none';
+        inner.style.transform = 'translateY(100%)';
+        inner.style.opacity = '0';
+    }
+
+    // 2. Rendre le modal visible (backdrop + panneau déjà hors écran = pas de flash)
+    modal.classList.remove('hidden');
+
+    // 3. Forcer un reflow pour que la position initiale soit peinte
+    if (inner) inner.getBoundingClientRect();
+
+    // 4. Déclencher l'animation de montée
+    if (inner) {
+        inner.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease';
+        inner.style.transform = 'translateY(0)';
+        inner.style.opacity = '1';
+    }
+
+    const modalContent = modal.querySelector('.modal-content');
+    if (modalContent) modalContent.scrollTop = 0;
 }
 
-// FIX: Modal close on mobile — use touchend + prevent default propagation
 function hideAddFlight() {
     const modal = document.getElementById('add-modal');
-    modal.classList.add('hidden');
+    const inner = modal.querySelector('.modal-content, .glass');
+
     document.getElementById('departure-suggestions').classList.add('hidden');
     document.getElementById('arrival-suggestions').classList.add('hidden');
+
+    if (inner) {
+        inner.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease';
+        inner.style.transform = 'translateY(100%)';
+        inner.style.opacity = '0';
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            inner.style.transition = 'none';
+            inner.style.transform = '';
+            inner.style.opacity = '';
+        }, 280);
+    } else {
+        modal.classList.add('hidden');
+    }
 }
 
 function showToast(message) {
@@ -1247,6 +1284,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadFlightsFromLocal();
     setTimeout(initMap, 100);
     setupModalClosers();
+
+    // Supprimer toute classe d'animation CSS statique sur les panneaux des modals
+    // (ex: animate-slide-up dans le HTML) pour éviter le conflit avec notre animation JS
+    document.querySelectorAll('#add-modal .modal-content, #add-modal .glass').forEach(el => {
+        el.classList.remove('animate-slide-up', 'animate-fade-in');
+    });
 
     if (auth) {
         auth.onAuthStateChanged(user => {

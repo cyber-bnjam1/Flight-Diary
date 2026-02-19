@@ -306,8 +306,8 @@ function searchAirport(query, type) {
     const suggestionsDiv = document.getElementById(`${type}-suggestions`);
     const nameDiv = document.getElementById(`${type}-name`);
     
-    // Ne chercher que si on a exactement 3 caractères alphabétiques
-    if (query.length !== 3) {
+    // Ne chercher que si on a au moins 1 caractère
+    if (query.length < 1) {
         suggestionsDiv.classList.add('hidden');
         return;
     }
@@ -316,29 +316,33 @@ function searchAirport(query, type) {
     const upperQuery = query.toUpperCase();
 
     // Chercher UNIQUEMENT dans les codes IATA (pas dans le nom ni la ville)
+    // Filtrer les codes qui commencent par la saisie
     const matches = airportsDB.filter(a => 
-        a.code === upperQuery
-    );
+        a.code.startsWith(upperQuery)
+    ).slice(0, 10);
 
     if (matches.length > 0) {
-        // Si match exact, sélectionner automatiquement le premier
-        const a = matches[0];
-        selectAirport(type, a.code, a.name.replace(/'/g, "\\'"), a.city.replace(/'/g, "\\'"));
+        suggestionsDiv.innerHTML = matches.map(a => `
+            <div class="suggestion-item" onclick="selectAirport('${type}', '${a.code}', '${a.name.replace(/'/g, "\\'")}', '${a.city.replace(/'/g, "\\'")}')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-lg text-white">${a.code}</span>
+                    <span class="text-xs text-gray-400">${a.country}</span>
+                </div>
+                <div class="text-sm text-gray-300">${a.name}</div>
+                <div class="text-xs text-gray-500">${a.city}</div>
+            </div>
+        `).join('');
+        suggestionsDiv.classList.remove('hidden');
     } else {
-        // Aucun aéroport trouvé avec ce code
         suggestionsDiv.innerHTML = `
             <div class="suggestion-item" style="cursor: default;">
-                <div class="text-sm text-gray-400">Aéroport non trouvé</div>
+                <div class="text-sm text-gray-400">Aucun aéroport avec ce code</div>
             </div>
         `;
         suggestionsDiv.classList.remove('hidden');
-        
-        // Cacher après 2 secondes
-        setTimeout(() => {
-            suggestionsDiv.classList.add('hidden');
-        }, 2000);
     }
 }
+
 function selectAirport(type, code, name, city) {
     document.getElementById(`${type}-code`).value = code;
     document.getElementById(`${type}-name`).textContent = `${name}, ${city}`;

@@ -124,7 +124,7 @@
 
             <div class="pt-6 border-t border-gray-700">
                 <div class="glass-card rounded-xl p-4">
-                    <p class="text-sm text-gray-400 mb-2">Flight Diary v2.0</p>
+                    <p class="text-sm text-gray-400 mb-2">Flight Diary v2.1</p>
                     <p class="text-xs text-gray-500" id="menu-flight-count">0 vol enregistré</p>
                 </div>
             </div>
@@ -241,8 +241,8 @@
     <!-- Add Flight Modal -->
     <div id="add-modal" class="fixed inset-0 z-[100] hidden">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="hideAddFlight()"></div>
-        <div class="absolute bottom-0 left-0 right-0 glass rounded-t-3xl max-h-[92vh] overflow-y-auto animate-slide-up">
-            <div class="p-6 space-y-5">
+        <div class="absolute bottom-0 left-0 right-0 glass rounded-t-3xl max-h-[92vh] overflow-y-auto animate-slide-up modal-content">
+            <div class="p-6 space-y-6">
                 <div class="flex items-center justify-between mb-2">
                     <h2 class="text-xl font-bold">Nouveau vol</h2>
                     <button onclick="hideAddFlight()" class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center btn-press">
@@ -250,61 +250,62 @@
                     </button>
                 </div>
 
-                <form id="flight-form" onsubmit="saveFlight(event)" class="space-y-5">
+                <form id="flight-form" onsubmit="saveFlight(event)" class="space-y-6">
+                    
                     <!-- Flight Number -->
-                    <div>
-                        <label class="text-sm text-gray-400 mb-2 block font-medium">N° de vol</label>
-                        <input type="text" id="flight-number" class="custom-input w-full px-4 py-3.5 rounded-xl text-base" placeholder="AF1234" required>
+                    <div class="form-section">
+                        <label class="form-label">N° de vol</label>
+                        <input type="text" id="flight-number" class="custom-input" placeholder="AF1234" required>
                     </div>
 
                     <!-- Route Section -->
                     <div class="glass-card rounded-2xl p-4 space-y-4">
-                        <div class="flex items-center justify-center">
+                        <div class="text-center">
                             <span class="text-xs font-medium text-blue-400 uppercase tracking-wider">Trajet</span>
                         </div>
                         
                         <!-- Departure -->
-                        <div>
-                            <label class="text-sm text-gray-400 mb-2 block">Aéroport de départ</label>
-                            <div class="relative">
-                                <input type="text" id="departure-code" class="custom-input w-full px-4 py-3.5 rounded-xl uppercase text-base font-semibold tracking-wider" placeholder="CDG" maxlength="3" required oninput="searchAirport(this.value, 'departure')" onchange="calculateFlightDuration()">
-                                <div id="departure-suggestions" class="absolute top-full left-0 right-0 mt-2 bg-gray-800 rounded-xl border border-gray-700 max-h-48 overflow-y-auto hidden z-50 shadow-2xl"></div>
+                        <div class="form-group">
+                            <label class="form-label">Aéroport de départ</label>
+                            <div class="form-input-wrapper">
+                                <input type="text" id="departure-code" class="custom-input uppercase font-semibold tracking-wider" placeholder="CDG" maxlength="3" required oninput="searchAirport(this.value, 'departure')" onchange="calculateFlightDuration()">
+                                <div id="departure-suggestions" class="suggestions-dropdown hidden"></div>
                             </div>
-                            <p id="departure-name" class="text-sm text-gray-400 mt-2 min-h-[1.25rem]"></p>
+                            <p id="departure-name" class="airport-name-display"></p>
                         </div>
 
                         <!-- Arrow -->
-                        <div class="flex justify-center -my-2 relative z-10">
+                        <div class="route-arrow">
                             <div class="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
                                 <i data-lucide="arrow-down" class="w-5 h-5 text-blue-400"></i>
                             </div>
                         </div>
 
                         <!-- Arrival -->
-                        <div>
-                            <label class="text-sm text-gray-400 mb-2 block">Aéroport d'arrivée</label>
-                            <div class="relative">
-                                <input type="text" id="arrival-code" class="custom-input w-full px-4 py-3.5 rounded-xl uppercase text-base font-semibold tracking-wider" placeholder="JFK" maxlength="3" required oninput="searchAirport(this.value, 'arrival')" onchange="calculateFlightDuration()">
-                                <div id="arrival-suggestions" class="absolute top-full left-0 right-0 mt-2 bg-gray-800 rounded-xl border border-gray-700 max-h-48 overflow-y-auto hidden z-50 shadow-2xl"></div>
+                        <div class="form-group">
+                            <label class="form-label">Aéroport d'arrivée</label>
+                            <div class="form-input-wrapper">
+                                <input type="text" id="arrival-code" class="custom-input uppercase font-semibold tracking-wider" placeholder="JFK" maxlength="3" required oninput="searchAirport(this.value, 'arrival')" onchange="calculateFlightDuration()">
+                                <div id="arrival-suggestions" class="suggestions-dropdown hidden"></div>
                             </div>
-                            <p id="arrival-name" class="text-sm text-gray-400 mt-2 min-h-[1.25rem]"></p>
+                            <p id="arrival-name" class="airport-name-display"></p>
                         </div>
                     </div>
 
-                    <!-- Date & Time Section -->
-                    <div class="glass-card rounded-2xl p-4 space-y-4">
-                        <div class="flex items-center justify-center">
+                    <!-- Date & Time Section - CORRIGÉ ICI -->
+                    <div class="glass-card rounded-2xl p-3 space-y-4 overflow-hidden">
+                        <div class="text-center">
                             <span class="text-xs font-medium text-purple-400 uppercase tracking-wider">Date & Heure</span>
                         </div>
                         
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Date</label>
-                                <input type="date" id="flight-date" class="custom-input w-full px-3 py-3.5 rounded-xl text-base" required>
+                        <div class="space-y-4 px-1">
+                            <div class="form-group">
+                                <label class="form-label">Date du vol</label>
+                                <input type="date" id="flight-date" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
                             </div>
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Heure départ</label>
-                                <input type="time" id="departure-time" class="custom-input w-full px-3 py-3.5 rounded-xl text-base" required>
+                            <div class="form-group">
+                                <label class="form-label">Heure de départ</label>
+                                <input type="time" id="departure-time" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
                             </div>
                         </div>
                     </div>
@@ -331,78 +332,114 @@
 
                     <!-- Flight Details Section -->
                     <div class="glass-card rounded-2xl p-4 space-y-4">
-                        <div class="flex items-center justify-center">
+                        <div class="text-center">
                             <span class="text-xs font-medium text-amber-400 uppercase tracking-wider">Détails du vol</span>
                         </div>
                         
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Type d'avion</label>
-                                <select id="aircraft-type" class="custom-input w-full px-3 py-3.5 rounded-xl text-base" onchange="calculateFlightDuration()">
-                                    <option value="">Choisir...</option>
-                                    <option value="A320">Airbus A320</option>
-                                    <option value="A321">Airbus A321</option>
-                                    <option value="A330">Airbus A330</option>
-                                    <option value="A350">Airbus A350</option>
-                                    <option value="A380">Airbus A380</option>
-                                    <option value="B737">Boeing 737</option>
-                                    <option value="B747">Boeing 747</option>
-                                    <option value="B777">Boeing 777</option>
-                                    <option value="B787">Boeing 787</option>
-                                    <option value="E190">Embraer E190</option>
-                                    <option value="CRJ">Bombardier CRJ</option>
-                                    <option value="ATR">ATR 42/72</option>
-                                    <option value="other">Autre</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Siège</label>
-                                <input type="text" id="seat-number" class="custom-input w-full px-3 py-3.5 rounded-xl text-base" placeholder="12A">
-                            </div>
+                        <!-- Aircraft Type - Full Width -->
+                        <div class="form-group">
+                            <label class="form-label">Type d'avion</label>
+                            <select id="aircraft-type" class="custom-input aircraft-select" onchange="calculateFlightDuration()">
+                                <option value="">Sélectionner un avion...</option>
+                                <optgroup label="Airbus">
+                                    <option value="A318">Airbus A318 (780 km/h)</option>
+                                    <option value="A319">Airbus A319 (820 km/h)</option>
+                                    <option value="A320">Airbus A320 (840 km/h)</option>
+                                    <option value="A321">Airbus A321 (850 km/h)</option>
+                                    <option value="A330-200">Airbus A330-200 (880 km/h)</option>
+                                    <option value="A330-300">Airbus A330-300 (880 km/h)</option>
+                                    <option value="A330-900">Airbus A330-900 (880 km/h)</option>
+                                    <option value="A350-900">Airbus A350-900 (900 km/h)</option>
+                                    <option value="A350-1000">Airbus A350-1000 (900 km/h)</option>
+                                    <option value="A380">Airbus A380 (900 km/h)</option>
+                                </optgroup>
+                                <optgroup label="Boeing">
+                                    <option value="B737-700">Boeing 737-700 (830 km/h)</option>
+                                    <option value="B737-800">Boeing 737-800 (840 km/h)</option>
+                                    <option value="B737-900">Boeing 737-900 (850 km/h)</option>
+                                    <option value="B747-400">Boeing 747-400 (910 km/h)</option>
+                                    <option value="B747-8">Boeing 747-8 (920 km/h)</option>
+                                    <option value="B757-200">Boeing 757-200 (850 km/h)</option>
+                                    <option value="B767-300">Boeing 767-300 (870 km/h)</option>
+                                    <option value="B777-200">Boeing 777-200 (890 km/h)</option>
+                                    <option value="B777-300">Boeing 777-300 (900 km/h)</option>
+                                    <option value="B787-8">Boeing 787-8 (900 km/h)</option>
+                                    <option value="B787-9">Boeing 787-9 (900 km/h)</option>
+                                    <option value="B787-10">Boeing 787-10 (900 km/h)</option>
+                                </optgroup>
+                                <optgroup label="Embraer">
+                                    <option value="E170">Embraer E170 (780 km/h)</option>
+                                    <option value="E175">Embraer E175 (790 km/h)</option>
+                                    <option value="E190">Embraer E190 (820 km/h)</option>
+                                    <option value="E195">Embraer E195 (830 km/h)</option>
+                                    <option value="E190-E2">Embraer E190-E2 (840 km/h)</option>
+                                    <option value="E195-E2">Embraer E195-E2 (850 km/h)</option>
+                                </optgroup>
+                                <optgroup label="Bombardier / Mitsubishi">
+                                    <option value="CRJ-200">Bombardier CRJ-200 (780 km/h)</option>
+                                    <option value="CRJ-700">Bombardier CRJ-700 (790 km/h)</option>
+                                    <option value="CRJ-900">Bombardier CRJ-900 (800 km/h)</option>
+                                    <option value="CRJ-1000">Bombardier CRJ-1000 (820 km/h)</option>
+                                    <option value="Q400">Bombardier Q400 (550 km/h)</option>
+                                    <option value="SpaceJet">Mitsubishi SpaceJet (830 km/h)</option>
+                                </optgroup>
+                                <optgroup label="ATR / Turboprop">
+                                    <option value="ATR42">ATR 42-600 (550 km/h)</option>
+                                    <option value="ATR72">ATR 72-600 (550 km/h)</option>
+                                    <option value="DHC8">De Havilland Dash 8 (500 km/h)</option>
+                                </optgroup>
+                                <optgroup label="Autres">
+                                    <option value="A220-100">Airbus A220-100 (850 km/h)</option>
+                                    <option value="A220-300">Airbus A220-300 (860 km/h)</option>
+                                    <option value="A319neo">Airbus A319neo (830 km/h)</option>
+                                    <option value="A320neo">Airbus A320neo (840 km/h)</option>
+                                    <option value="A321neo">Airbus A321neo (860 km/h)</option>
+                                    <option value="B737MAX7">Boeing 737 MAX 7 (840 km/h)</option>
+                                    <option value="B737MAX8">Boeing 737 MAX 8 (850 km/h)</option>
+                                    <option value="B737MAX9">Boeing 737 MAX 9 (850 km/h)</option>
+                                    <option value="B777X">Boeing 777X (920 km/h)</option>
+                                    <option value="SSJ100">Sukhoi Superjet 100 (830 km/h)</option>
+                                    <option value="MC21">Irkut MC-21 (850 km/h)</option>
+                                    <option value="C919">Comac C919 (840 km/h)</option>
+                                    <option value="other">Autre / Inconnu (850 km/h)</option>
+                                </optgroup>
+                            </select>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Classe</label>
-                                <select id="travel-class" class="custom-input w-full px-3 py-3.5 rounded-xl text-base">
+                        <div class="form-grid form-grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Siège</label>
+                                <input type="text" id="seat-number" class="custom-input" placeholder="12A">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Classe</label>
+                                <select id="travel-class" class="custom-input">
                                     <option value="economy">Économique</option>
                                     <option value="premium">Premium</option>
                                     <option value="business">Affaires</option>
                                     <option value="first">Première</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="text-sm text-gray-400 mb-2 block">Motif</label>
-                                <select id="travel-reason" class="custom-input w-full px-3 py-3.5 rounded-xl text-base">
-                                    <option value="leisure">Loisir</option>
-                                    <option value="business">Professionnel</option>
-                                    <option value="family">Famille</option>
-                                    <option value="other">Autre</option>
-                                </select>
-                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Motif du voyage</label>
+                            <select id="travel-reason" class="custom-input">
+                                <option value="leisure">Loisir / Vacances</option>
+                                <option value="business">Professionnel / Affaires</option>
+                                <option value="family">Famille / Visite</option>
+                                <option value="other">Autre</option>
+                            </select>
                         </div>
                     </div>
 
                     <!-- Notes -->
-                    <div>
-                        <label class="text-sm text-gray-400 mb-2 block font-medium">Notes</label>
-                        <textarea id="flight-notes" class="custom-input w-full px-4 py-3.5 rounded-xl h-24 resize-none text-base" placeholder="Commentaires sur le vol..."></textarea>
+                    <div class="form-section">
+                        <label class="form-label">Notes</label>
+                        <textarea id="flight-notes" class="custom-input w-full h-24 resize-none" placeholder="Commentaires sur le vol..."></textarea>
                     </div>
 
-                    <!-- Rating -->
-                    <div>
-                        <label class="text-sm text-gray-400 mb-3 block font-medium">Note du vol</label>
-                        <div class="flex gap-3 justify-center" id="rating-stars">
-                            <button type="button" onclick="setRating(1)" class="star-btn text-3xl text-gray-600 btn-press transition-transform hover:scale-110">⭐</button>
-                            <button type="button" onclick="setRating(2)" class="star-btn text-3xl text-gray-600 btn-press transition-transform hover:scale-110">⭐</button>
-                            <button type="button" onclick="setRating(3)" class="star-btn text-3xl text-gray-600 btn-press transition-transform hover:scale-110">⭐</button>
-                            <button type="button" onclick="setRating(4)" class="star-btn text-3xl text-gray-600 btn-press transition-transform hover:scale-110">⭐</button>
-                            <button type="button" onclick="setRating(5)" class="star-btn text-3xl text-gray-600 btn-press transition-transform hover:scale-110">⭐</button>
-                        </div>
-                        <input type="hidden" id="flight-rating" value="0">
-                    </div>
-
-                    <button type="submit" class="w-full py-4 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold btn-press text-lg shadow-lg shadow-blue-500/25 mt-6">
+                    <button type="submit" class="w-full py-4 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold btn-press text-lg shadow-lg shadow-blue-500/25">
                         Enregistrer le vol
                     </button>
                 </form>
@@ -515,20 +552,6 @@
                     <div id="reasons-list" class="space-y-2"></div>
                 </div>
 
-                <!-- Ratings -->
-                <div class="glass-card rounded-2xl p-4">
-                    <h3 class="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-                        <i data-lucide="star" class="w-4 h-4"></i>
-                        Notes moyennes
-                    </h3>
-                    <div class="flex items-center gap-4">
-                        <div class="text-4xl font-bold text-yellow-400" id="avg-rating">0.0</div>
-                        <div class="flex-1">
-                            <div class="space-y-1" id="rating-bars"></div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Records -->
                 <div class="glass-card rounded-2xl p-4">
                     <h3 class="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
@@ -562,7 +585,7 @@
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                 </div>
-                <input type="text" id="airport-search" class="custom-input w-full px-4 py-3 rounded-xl" placeholder="Rechercher un aéroport..." oninput="filterVisitedAirports(this.value)">
+                <input type="text" id="airport-search" class="custom-input" placeholder="Rechercher un aéroport..." oninput="filterVisitedAirports(this.value)">
             </div>
             <div id="visited-airports-list" class="flex-1 overflow-y-auto p-4 space-y-2"></div>
             <div class="safe-bottom h-6"></div>

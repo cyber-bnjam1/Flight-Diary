@@ -315,7 +315,7 @@ function searchAirport(query, type) {
         a.code.toLowerCase().includes(query.toLowerCase()) ||
         a.name.toLowerCase().includes(query.toLowerCase()) ||
         a.city.toLowerCase().includes(query.toLowerCase())
-    ).slice(0, 5);
+    ).slice(0, 10);
 
     if (matches.length > 0) {
         suggestionsDiv.innerHTML = matches.map(a => `

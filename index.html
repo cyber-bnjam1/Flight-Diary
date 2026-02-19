@@ -141,13 +141,11 @@
     <!-- App Container -->
     <div id="app" class="min-h-screen pb-8">
         
-        <!-- Header - CORRIGÉ : plus de logo avion, juste ton logo -->
-        <header class="glass sticky top-0 z-30 px-6 py-4 pt-safe">
+        <!-- Header -->
+        <header class="glass px-6">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <!-- TON LOGO SEUL -->
                     <img src="logo001.png" alt="Flight Diary" class="w-10 h-10 rounded-xl object-cover">
-                    
                     <div>
                         <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Flight Diary</h1>
                         <p class="text-xs text-gray-400" id="header-stats">Chargement...</p>
@@ -299,24 +297,6 @@
                         </div>
                     </div>
 
-                    <!-- Date & Time Section -->
-                    <div class="glass-card rounded-2xl p-3 space-y-4 overflow-hidden" style="z-index:1;">
-                        <div class="text-center">
-                            <span class="text-xs font-medium text-purple-400 uppercase tracking-wider">Date & Heure</span>
-                        </div>
-                        
-                        <div class="space-y-4 px-1">
-                            <div class="form-group">
-                                <label class="form-label">Date du vol</label>
-                                <input type="date" id="flight-date" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Heure de départ</label>
-                                <input type="time" id="departure-time" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Duration Display (Auto-calculated) -->
                     <div class="duration-display rounded-2xl p-4">
                         <div class="flex items-center justify-between">
@@ -337,7 +317,7 @@
                         <input type="hidden" id="flight-duration" value="">
                     </div>
 
-                    <!-- Flight Details Section -->
+                    <!-- Flight Details Section - DÉPLACÉ AVANT Date & Heure -->
                     <div class="glass-card rounded-2xl p-4 space-y-4">
                         <div class="text-center">
                             <span class="text-xs font-medium text-amber-400 uppercase tracking-wider">Détails du vol</span>
@@ -437,6 +417,24 @@
                                 <option value="family">Famille / Visite</option>
                                 <option value="other">Autre</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- Date & Time Section - DÉPLACÉ APRÈS Détails du vol -->
+                    <div class="glass-card rounded-2xl p-3 space-y-4">
+                        <div class="text-center">
+                            <span class="text-xs font-medium text-purple-400 uppercase tracking-wider">Date & Heure</span>
+                        </div>
+                        
+                        <div class="space-y-4 px-1">
+                            <div class="form-group">
+                                <label class="form-label">Date du vol</label>
+                                <input type="date" id="flight-date" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Heure de départ</label>
+                                <input type="time" id="departure-time" class="custom-input" style="width: 100%; box-sizing: border-box;" required>
+                            </div>
                         </div>
                     </div>
 

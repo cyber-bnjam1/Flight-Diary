@@ -1,6 +1,7 @@
 * {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    box-sizing: border-box !important;
 }
 
 body {
@@ -8,6 +9,8 @@ body {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
     min-height: 100vh;
     overflow-x: hidden;
+    margin: 0;
+    padding: 0;
 }
 
 .safe-top {
@@ -30,6 +33,7 @@ body {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.05);
+    max-width: 100%;
 }
 
 @keyframes slideUp {
@@ -77,6 +81,7 @@ body {
     height: 300px;
     border-radius: 16px;
     z-index: 1;
+    max-width: 100%;
 }
 
 .leaflet-popup-content-wrapper {
@@ -95,6 +100,26 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: white;
     transition: all 0.3s;
+    width: 100%;
+    max-width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 48px;
+    margin: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+select.custom-input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 20px;
+    padding-right: 40px;
 }
 
 .custom-input:focus {
@@ -209,7 +234,8 @@ body {
 }
 
 /* Time input styling */
-input[type="time"]::-webkit-calendar-picker-indicator {
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1);
     cursor: pointer;
 }
@@ -260,6 +286,121 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     color: #60a5fa !important;
 }
 
+/* FORM FIXES - Anti-chevauchement */
+.form-section {
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+.form-grid {
+    display: grid;
+    gap: 16px;
+    width: 100%;
+}
+
+.form-grid-2 {
+    grid-template-columns: 1fr 1fr;
+}
+
+.form-group {
+    margin-bottom: 16px;
+    width: 100%;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    font-size: 14px;
+    color: #9ca3af;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.form-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.suggestions-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(31, 41, 55, 0.98);
+    border: 1px solid rgba(75, 85, 99, 1);
+    border-radius: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 50;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.suggestion-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+    transition: background-color 0.2s;
+}
+
+.suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-item:hover {
+    background-color: rgba(75, 85, 99, 0.5);
+}
+
+.airport-name-display {
+    font-size: 14px;
+    color: #9ca3af;
+    margin-top: 8px;
+    min-height: 20px;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.route-arrow {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0;
+    position: relative;
+    z-index: 10;
+}
+
+/* Modal improvements */
+.modal-content {
+    max-height: 90vh;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    width: 100%;
+}
+
+/* Aircraft select specific */
+.aircraft-select {
+    font-size: 14px;
+    width: 100%;
+}
+
+/* Fix spécifique pour les inputs dans glass-card */
+.glass-card input,
+.glass-card select,
+.glass-card textarea {
+    max-width: 100%;
+    width: 100%;
+}
+
+/* Fix pour le conteneur Date & Heure */
+.glass-card .space-y-4 {
+    width: 100%;
+}
+
+.glass-card .space-y-4 > div {
+    width: 100%;
+}
+
 /* Responsive adjustments */
 @media (min-width: 768px) {
     #map {
@@ -268,6 +409,21 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     
     .menu-drawer {
         max-width: 350px;
+    }
+}
+
+@media (max-width: 380px) {
+    .form-grid-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    .glass-card {
+        padding: 12px;
+    }
+    
+    .custom-input {
+        padding: 10px;
+        font-size: 16px;
     }
 }
 

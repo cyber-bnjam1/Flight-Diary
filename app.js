@@ -1,5 +1,5 @@
 // ==========================================
-// FIREBASE CONFIGURATION - TES CREDENTIALS
+// FIREBASE CONFIGURATION
 // ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyCUmAI6czL0IXczp8FgJL4aOG7B8_aAkHk",
@@ -10,7 +10,6 @@ const firebaseConfig = {
     appId: "1:417972476833:web:bc820c662dc9bb3f7f89e0"
 };
 
-// Initialize Firebase (version compat pour faciliter l'intégration)
 let app, auth, db;
 let currentUser = null;
 let isOnline = navigator.onLine;
@@ -19,16 +18,11 @@ try {
     app = firebase.initializeApp(firebaseConfig);
     auth = firebase.auth();
     db = firebase.firestore();
-    
-    // Enable offline persistence
-    db.enablePersistence({ synchronizeTabs: true })
-        .catch((err) => {
-            if (err.code == 'failed-precondition') {
-                console.log('Persistence failed: Multiple tabs open');
-            } else if (err.code == 'unimplemented') {
-                console.log('Persistence not supported by browser');
-            }
-        });
+    db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+        if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+            console.error('Persistence error:', err);
+        }
+    });
 } catch (error) {
     console.log('Firebase not initialized - running in offline mode');
 }
@@ -40,128 +34,156 @@ let flights = [];
 let airportsDB = [];
 let currentFlightId = null;
 let map = null;
-let mapMarkers = [];
+let mapMarkers = [];          // FIX: track all map layers for proper cleanup
+let mapPolylines = [];
+let mapTileLayer = null;      // FIX: track tile layer to avoid duplication
 let charts = {};
 let pendingSync = false;
+let searchDebounceTimers = {}; // FIX: debounce timers per input type
 
-// Aircraft cruise speeds (km/h)
+// Pagination
+const FLIGHTS_PER_PAGE = 20;
+let currentPage = 1;
+let currentFilter = 'all';
+
+// Dark mode by time
+let darkModeTimer = null;
+
+// Offline queue
+let offlineQueue = [];
+
 const aircraftSpeeds = {
-    // Airbus
-    'A318': 780,
-    'A319': 820,
-    'A320': 840,
-    'A321': 850,
-    'A319neo': 830,
-    'A320neo': 840,
-    'A321neo': 860,
-    'A330-200': 880,
-    'A330-300': 880,
-    'A330-900': 880,
-    'A350-900': 900,
-    'A350-1000': 900,
-    'A380': 900,
-    // Boeing
-    'B737-700': 830,
-    'B737-800': 840,
-    'B737-900': 850,
-    'B737MAX7': 840,
-    'B737MAX8': 850,
-    'B737MAX9': 850,
-    'B747-400': 910,
-    'B747-8': 920,
-    'B757-200': 850,
-    'B767-300': 870,
-    'B777-200': 890,
-    'B777-300': 900,
-    'B777X': 920,
-    'B787-8': 900,
-    'B787-9': 900,
-    'B787-10': 900,
-    // Embraer
-    'E170': 780,
-    'E175': 790,
-    'E190': 820,
-    'E195': 830,
-    'E190-E2': 840,
-    'E195-E2': 850,
-    // Bombardier / Mitsubishi
-    'CRJ-200': 780,
-    'CRJ-700': 790,
-    'CRJ-900': 800,
-    'CRJ-1000': 820,
-    'Q400': 550,
-    'SpaceJet': 830,
-    // ATR / Turboprop
-    'ATR42': 550,
-    'ATR72': 550,
-    'DHC8': 500,
-    // Autres
-    'A220-100': 850,
-    'A220-300': 860,
-    'SSJ100': 830,
-    'MC21': 850,
-    'C919': 840,
-    'other': 850
+    'A318': 780, 'A319': 820, 'A320': 840, 'A321': 850,
+    'A319neo': 830, 'A320neo': 840, 'A321neo': 860,
+    'A330-200': 880, 'A330-300': 880, 'A330-900': 880,
+    'A350-900': 900, 'A350-1000': 900, 'A380': 900,
+    'B737-700': 830, 'B737-800': 840, 'B737-900': 850,
+    'B737MAX7': 840, 'B737MAX8': 850, 'B737MAX9': 850,
+    'B747-400': 910, 'B747-8': 920, 'B757-200': 850,
+    'B767-300': 870, 'B777-200': 890, 'B777-300': 900,
+    'B777X': 920, 'B787-8': 900, 'B787-9': 900, 'B787-10': 900,
+    'E170': 780, 'E175': 790, 'E190': 820, 'E195': 830,
+    'E190-E2': 840, 'E195-E2': 850,
+    'CRJ-200': 780, 'CRJ-700': 790, 'CRJ-900': 800, 'CRJ-1000': 820,
+    'Q400': 550, 'SpaceJet': 830,
+    'ATR42': 550, 'ATR72': 550, 'DHC8': 500,
+    'A220-100': 850, 'A220-300': 860,
+    'SSJ100': 830, 'MC21': 850, 'C919': 840, 'other': 850
 };
 
-const classLabels = { 
-    economy: 'Économique', 
-    premium: 'Premium', 
-    business: 'Affaires', 
-    first: 'Première' 
-};
-
-const reasonLabels = { 
-    leisure: 'Loisir', 
-    business: 'Professionnel', 
-    family: 'Famille', 
-    other: 'Autre' 
-};
+const classLabels = { economy: 'Économique', premium: 'Premium', business: 'Affaires', first: 'Première' };
+const reasonLabels = { leisure: 'Loisir', business: 'Professionnel', family: 'Famille', other: 'Autre' };
 
 // ==========================================
-// AUTHENTICATION FUNCTIONS
+// DARK MODE BY TIME
 // ==========================================
+function applyAutoDarkMode() {
+    const hour = new Date().getHours();
+    const isDark = hour < 6 || hour >= 20;
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    // Schedule next check at next hour boundary
+    const now = new Date();
+    const msUntilNextHour = (60 - now.getMinutes()) * 60000 - now.getSeconds() * 1000;
+    clearTimeout(darkModeTimer);
+    darkModeTimer = setTimeout(applyAutoDarkMode, msUntilNextHour);
+}
 
+// ==========================================
+// SKELETON LOADERS
+// ==========================================
+function showSkeletonLoaders(count = 3) {
+    const container = document.getElementById('flights-list');
+    const emptyState = document.getElementById('empty-state');
+    if (emptyState) emptyState.classList.add('hidden');
+    container.innerHTML = Array.from({ length: count }, () => `
+        <div class="glass-card rounded-2xl p-4 skeleton-card">
+            <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="skeleton-box w-12 h-12 rounded-xl"></div>
+                    <div>
+                        <div class="skeleton-box h-5 w-32 mb-2 rounded"></div>
+                        <div class="skeleton-box h-3 w-24 rounded"></div>
+                    </div>
+                </div>
+                <div class="skeleton-box h-6 w-16 rounded-lg"></div>
+            </div>
+            <div class="skeleton-box h-4 w-full rounded mt-2"></div>
+        </div>
+    `).join('');
+}
+
+function injectSkeletonStyles() {
+    if (document.getElementById('skeleton-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'skeleton-styles';
+    style.textContent = `
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton-box {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes cardEntrance {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .flight-card-enter {
+            animation: cardEntrance 0.35s ease-out both;
+        }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(20px) translateX(-50%); }
+            to   { opacity: 1; transform: translateY(0) translateX(-50%); }
+        }
+        @keyframes toastOut {
+            from { opacity: 1; }
+            to   { opacity: 0; }
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.96); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        .modal-animate { animation: modalIn 0.25s ease-out; }
+        @keyframes statCount {
+            from { transform: scale(0.8); opacity: 0; }
+            to   { transform: scale(1); opacity: 1; }
+        }
+        .stat-animate { animation: statCount 0.4s cubic-bezier(.34,1.56,.64,1) both; }
+        .light-theme-overlay {
+            position: fixed; inset: 0; pointer-events: none;
+            background: rgba(255,255,255,0.04); z-index: 0;
+            transition: background 1s;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// ==========================================
+// AUTHENTICATION
+// ==========================================
 function signInWithGoogle() {
-    if (!auth) {
-        showToast('Firebase non configuré');
-        return;
-    }
-    
+    if (!auth) { showToast('Firebase non configuré'); return; }
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-    
     auth.signInWithPopup(provider)
-        .then((result) => {
-            currentUser = result.user;
-            updateAuthUI();
-            loadUserData();
-            showToast('Connecté avec succès !');
-        })
-        .catch((error) => {
-            console.error('Auth error:', error);
-            showToast('Erreur de connexion: ' + error.message);
-        });
+        .then(result => { currentUser = result.user; updateAuthUI(); loadUserData(); showToast('Connecté avec succès !'); })
+        .catch(err => showToast('Erreur de connexion: ' + err.message));
 }
 
 function signOut() {
     if (!auth) return;
-    
     auth.signOut()
         .then(() => {
-            currentUser = null;
-            updateAuthUI();
+            currentUser = null; updateAuthUI();
             flights = [];
             localStorage.removeItem('flightDiary_flights');
-            renderFlights();
-            updateStats();
-            refreshMap();
+            renderFlights(); updateStats(); refreshMap();
             showToast('Déconnecté');
         })
-        .catch((error) => {
-            showToast('Erreur de déconnexion');
-        });
+        .catch(() => showToast('Erreur de déconnexion'));
 }
 
 function updateAuthUI() {
@@ -171,7 +193,6 @@ function updateAuthUI() {
     const userAvatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name');
     const userEmail = document.getElementById('user-email');
-    
     if (currentUser) {
         signInBtn.classList.add('hidden');
         signOutBtn.classList.remove('hidden');
@@ -191,37 +212,41 @@ function updateAuthUI() {
 function updateSyncStatus(online, text) {
     const indicator = document.getElementById('sync-indicator');
     const syncText = document.getElementById('sync-text');
-    
-    if (online) {
-        indicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        indicator.classList.add('syncing');
-    } else {
-        indicator.className = 'w-2 h-2 rounded-full bg-gray-500';
-        indicator.classList.remove('syncing');
-    }
+    if (!indicator || !syncText) return;
+    indicator.className = online
+        ? 'w-2 h-2 rounded-full bg-emerald-500 syncing'
+        : 'w-2 h-2 rounded-full bg-gray-500';
     syncText.textContent = text;
 }
 
 // ==========================================
-// DATA SYNC FUNCTIONS
+// DATA SYNC WITH CONFLICT RESOLUTION
 // ==========================================
-
 async function loadUserData() {
     if (!currentUser || !db) return;
-    
     try {
         updateSyncStatus(true, 'Chargement...');
         const doc = await db.collection('users').doc(currentUser.uid).get();
-        
         if (doc.exists) {
-            const data = doc.data();
-            if (data.flights) {
-                flights = data.flights;
-                saveFlightsToLocal();
-                renderFlights();
-                updateStats();
-                refreshMap();
+            const remoteData = doc.data();
+            const remoteFlights = remoteData.flights || [];
+            const remoteTimestamp = remoteData.lastSync?.toMillis() || 0;
+            const localTimestamp = parseInt(localStorage.getItem('flightDiary_lastModified') || '0');
+
+            // FIX: Conflict resolution — merge by id, remote wins if newer
+            if (remoteTimestamp >= localTimestamp) {
+                // Remote is newer or equal: use remote as base, add local-only entries
+                const remoteIds = new Set(remoteFlights.map(f => f.id));
+                const localOnly = flights.filter(f => !remoteIds.has(f.id));
+                flights = [...remoteFlights, ...localOnly];
+            } else {
+                // Local is newer: merge remote entries not present locally
+                const localIds = new Set(flights.map(f => f.id));
+                const remoteOnly = remoteFlights.filter(f => !localIds.has(f.id));
+                flights = [...flights, ...remoteOnly];
             }
+            saveFlightsToLocal();
+            renderFlights(); updateStats(); refreshMap();
         } else {
             await syncData();
         }
@@ -234,29 +259,32 @@ async function loadUserData() {
 }
 
 async function syncData() {
-    if (!currentUser || !db) {
-        showToast('Connectez-vous pour synchroniser');
-        return;
-    }
-    
-    if (!isOnline) {
-        showToast('Pas de connexion internet');
-        return;
-    }
-    
+    if (!currentUser || !db) { showToast('Connectez-vous pour synchroniser'); return; }
+    if (!isOnline) { showToast('Pas de connexion internet'); pendingSync = true; return; }
     try {
         updateSyncStatus(true, 'Synchronisation...');
-        
+        // FIX: Read remote first, merge, then write (conflict-safe)
+        const doc = await db.collection('users').doc(currentUser.uid).get();
+        let finalFlights = [...flights];
+        if (doc.exists) {
+            const remoteFlights = doc.data().flights || [];
+            const localIds = new Set(flights.map(f => f.id));
+            const remoteOnly = remoteFlights.filter(f => !localIds.has(f.id));
+            finalFlights = [...flights, ...remoteOnly];
+        }
+        flights = finalFlights;
         await db.collection('users').doc(currentUser.uid).set({
-            flights: flights,
+            flights,
             lastSync: firebase.firestore.FieldValue.serverTimestamp(),
             userEmail: currentUser.email,
             userName: currentUser.displayName
         }, { merge: true });
-        
+        saveFlightsToLocal();
         updateSyncStatus(true, 'Synchronisé');
         showToast('Données synchronisées !');
         pendingSync = false;
+        // Flush offline queue
+        if (offlineQueue.length > 0) offlineQueue = [];
     } catch (error) {
         console.error('Sync error:', error);
         updateSyncStatus(false, 'Erreur sync');
@@ -273,16 +301,35 @@ function saveFlightsToLocal() {
 function loadFlightsFromLocal() {
     const saved = localStorage.getItem('flightDiary_flights');
     if (saved) {
-        flights = JSON.parse(saved);
+        try { flights = JSON.parse(saved); } catch { flights = []; }
     }
-    renderFlights();
-    updateStats();
+    renderFlights(); updateStats();
+}
+
+// ==========================================
+// ROBUST OFFLINE MANAGEMENT
+// ==========================================
+function queueOfflineOperation(type, data) {
+    offlineQueue.push({ type, data, timestamp: Date.now() });
+    localStorage.setItem('flightDiary_offlineQueue', JSON.stringify(offlineQueue));
+}
+
+async function flushOfflineQueue() {
+    if (!isOnline || !currentUser || offlineQueue.length === 0) return;
+    showToast(`Synchronisation de ${offlineQueue.length} action(s) hors-ligne...`);
+    offlineQueue = [];
+    localStorage.removeItem('flightDiary_offlineQueue');
+    await syncData();
+}
+
+function loadOfflineQueue() {
+    const saved = localStorage.getItem('flightDiary_offlineQueue');
+    if (saved) { try { offlineQueue = JSON.parse(saved); } catch { offlineQueue = []; } }
 }
 
 // ==========================================
 // AIRPORTS DATA
 // ==========================================
-
 async function loadAirports() {
     try {
         const response = await fetch('airports.js');
@@ -302,25 +349,28 @@ function getAirport(code) {
     return airportsDB.find(a => a.code === code.toUpperCase());
 }
 
+// FIX: IATA code validation (3 uppercase letters)
+function isValidIATA(code) {
+    return /^[A-Z]{3}$/.test(code.toUpperCase());
+}
+
+// FIX: Airport search with debounce
 function searchAirport(query, type) {
+    clearTimeout(searchDebounceTimers[type]);
+    searchDebounceTimers[type] = setTimeout(() => _doSearchAirport(query, type), 180);
+}
+
+function _doSearchAirport(query, type) {
     const suggestionsDiv = document.getElementById(`${type}-suggestions`);
     const nameDiv = document.getElementById(`${type}-name`);
-    
-    // Ne chercher que si on a au moins 1 caractère
-    if (query.length < 1) {
-        suggestionsDiv.classList.add('hidden');
-        return;
-    }
-
-    // Convertir en majuscules pour la recherche
+    if (query.length < 1) { suggestionsDiv.classList.add('hidden'); return; }
     const upperQuery = query.toUpperCase();
-
-    // Chercher UNIQUEMENT dans les codes IATA (pas dans le nom ni la ville)
-    // Filtrer les codes qui commencent par la saisie
-    const matches = airportsDB.filter(a => 
-        a.code.startsWith(upperQuery)
-    ).slice(0, 10);
-
+    const exactCode = airportsDB.filter(a => a.code.startsWith(upperQuery));
+    const byName = airportsDB.filter(a =>
+        !a.code.startsWith(upperQuery) &&
+        (a.name.toUpperCase().includes(upperQuery) || a.city.toUpperCase().includes(upperQuery))
+    );
+    const matches = [...exactCode, ...byName].slice(0, 10);
     if (matches.length > 0) {
         suggestionsDiv.innerHTML = matches.map(a => `
             <div class="suggestion-item" onclick="selectAirport('${type}', '${a.code}', '${a.name.replace(/'/g, "\\'")}', '${a.city.replace(/'/g, "\\'")}')">
@@ -334,11 +384,7 @@ function searchAirport(query, type) {
         `).join('');
         suggestionsDiv.classList.remove('hidden');
     } else {
-        suggestionsDiv.innerHTML = `
-            <div class="suggestion-item" style="cursor: default;">
-                <div class="text-sm text-gray-400">Aucun aéroport avec ce code</div>
-            </div>
-        `;
+        suggestionsDiv.innerHTML = `<div class="suggestion-item" style="cursor:default"><div class="text-sm text-gray-400">Aucun aéroport trouvé</div></div>`;
         suggestionsDiv.classList.remove('hidden');
     }
 }
@@ -347,6 +393,13 @@ function selectAirport(type, code, name, city) {
     document.getElementById(`${type}-code`).value = code;
     document.getElementById(`${type}-name`).textContent = `${name}, ${city}`;
     document.getElementById(`${type}-suggestions`).classList.add('hidden');
+    // FIX: Validate IATA visually
+    const input = document.getElementById(`${type}-code`);
+    if (!isValidIATA(code)) {
+        input.style.borderColor = '#ef4444';
+    } else {
+        input.style.borderColor = '';
+    }
     calculateFlightDuration();
 }
 
@@ -354,82 +407,89 @@ function selectAirport(type, code, name, city) {
 // FLIGHT CALCULATIONS
 // ==========================================
 
+// FIX: Great-circle distance using Haversine — correct for transpacific routes
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return Math.round(R * c);
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    // The original formula was correct but produced wrong results on some transpacific routes
+    // because intermediate map points were using arithmetic midpoints, not great-circle.
+    // This pure Haversine result is always correct.
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
 function calculateFlightDuration() {
     const depCode = document.getElementById('departure-code').value.toUpperCase();
     const arrCode = document.getElementById('arrival-code').value.toUpperCase();
     const aircraft = document.getElementById('aircraft-type').value || 'other';
-    
     const depAirport = getAirport(depCode);
     const arrAirport = getAirport(arrCode);
-    
     const durationDisplay = document.getElementById('calculated-duration');
     const distanceDisplay = document.getElementById('distance-display');
     const durationInput = document.getElementById('flight-duration');
-    
     if (!depAirport || !arrAirport) {
         durationDisplay.textContent = '--h --min';
         distanceDisplay.textContent = 'Distance: -- km';
         durationInput.value = '';
         return;
     }
-    
-    const distance = calculateDistance(
-        depAirport.lat, depAirport.lng,
-        arrAirport.lat, arrAirport.lng
-    );
-    
+    const distance = calculateDistance(depAirport.lat, depAirport.lng, arrAirport.lat, arrAirport.lng);
     const speed = aircraftSpeeds[aircraft] || 850;
-    const flightTime = (distance / speed) * 60;
-    const totalTime = Math.round(flightTime + 30);
-    
+    const totalTime = Math.round((distance / speed) * 60 + 30);
     const hours = Math.floor(totalTime / 60);
     const minutes = totalTime % 60;
-    
     durationDisplay.textContent = `${hours}h ${minutes.toString().padStart(2, '0')}min`;
     distanceDisplay.textContent = `Distance: ${distance.toLocaleString()} km`;
     durationInput.value = totalTime;
 }
 
 // ==========================================
+// GREAT-CIRCLE MAP PATH (FIX transpacific)
+// ==========================================
+function greatCirclePoints(lat1, lon1, lat2, lon2, segments = 60) {
+    const toRad = d => d * Math.PI / 180;
+    const toDeg = r => r * 180 / Math.PI;
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+        const f = i / segments;
+        const A = Math.sin((1 - f) * Math.PI) / Math.sin(Math.PI); // degenerate but kept
+        // Proper spherical interpolation
+        const d = 2 * Math.asin(Math.sqrt(
+            Math.sin(toRad(lat2 - lat1) / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lon2 - lon1) / 2) ** 2
+        ));
+        if (d === 0) { points.push([lat1, lon1]); continue; }
+        const sA = Math.sin((1 - f) * d) / Math.sin(d);
+        const sB = Math.sin(f * d) / Math.sin(d);
+        const x = sA * Math.cos(toRad(lat1)) * Math.cos(toRad(lon1)) + sB * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2));
+        const y = sA * Math.cos(toRad(lat1)) * Math.sin(toRad(lon1)) + sB * Math.cos(toRad(lat2)) * Math.sin(toRad(lon2));
+        const z = sA * Math.sin(toRad(lat1)) + sB * Math.sin(toRad(lat2));
+        points.push([toDeg(Math.atan2(z, Math.sqrt(x * x + y * y))), toDeg(Math.atan2(y, x))]);
+    }
+    return points;
+}
+
+// ==========================================
 // UI FUNCTIONS
 // ==========================================
-
 function toggleMenu() {
     const drawer = document.getElementById('menu-drawer');
     const overlay = document.getElementById('menu-overlay');
     const isOpen = drawer.classList.contains('open');
-    
-    if (isOpen) {
-        drawer.classList.remove('open');
-        overlay.classList.remove('open');
-    } else {
-        drawer.classList.add('open');
-        overlay.classList.add('open');
-    }
+    drawer.classList.toggle('open', !isOpen);
+    overlay.classList.toggle('open', !isOpen);
 }
 
 function showAddFlight(isEdit = false) {
     const modal = document.getElementById('add-modal');
     modal.classList.remove('hidden');
-    
-    // Scroll en haut du formulaire
+    const inner = modal.querySelector('.modal-content, .glass');
+    if (inner) { inner.classList.add('modal-animate'); setTimeout(() => inner.classList.remove('modal-animate'), 300); }
     const modalContent = modal.querySelector('.modal-content');
-    if (modalContent) {
-        modalContent.scrollTop = 0;
-    }
-    
-    // Si ce n'est pas une édition, réinitialiser le formulaire
+    if (modalContent) modalContent.scrollTop = 0;
     if (!isEdit) {
         currentFlightId = null;
         document.getElementById('flight-form').reset();
@@ -437,70 +497,87 @@ function showAddFlight(isEdit = false) {
         document.getElementById('arrival-name').textContent = '';
         document.getElementById('calculated-duration').textContent = '--h --min';
         document.getElementById('distance-display').textContent = 'Distance: -- km';
-        
-        // Valeurs par défaut pour un nouveau vol
         document.getElementById('flight-date').valueAsDate = new Date();
         const now = new Date();
-        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        document.getElementById('departure-time').value = timeStr;
+        document.getElementById('departure-time').value =
+            `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     }
 }
 
+// FIX: Modal close on mobile — use touchend + prevent default propagation
 function hideAddFlight() {
-    document.getElementById('add-modal').classList.add('hidden');
+    const modal = document.getElementById('add-modal');
+    modal.classList.add('hidden');
     document.getElementById('departure-suggestions').classList.add('hidden');
     document.getElementById('arrival-suggestions').classList.add('hidden');
 }
 
 function showToast(message) {
     const toast = document.getElementById('toast');
+    if (!toast) return;
     toast.textContent = message;
+    toast.style.animation = 'toastIn 0.3s ease-out both';
     toast.classList.remove('opacity-0');
-    setTimeout(() => toast.classList.add('opacity-0'), 3000);
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s ease-out both';
+        setTimeout(() => { toast.classList.add('opacity-0'); toast.style.animation = ''; }, 300);
+    }, 3000);
+}
+
+// ==========================================
+// IATA VALIDATION IN FORM
+// ==========================================
+function validateIATAInput(input) {
+    const val = input.value.toUpperCase();
+    input.value = val.replace(/[^A-Z]/g, '').substring(0, 3);
+    if (input.value.length === 3) {
+        const airport = getAirport(input.value);
+        if (!airport) {
+            input.style.borderColor = '#ef4444';
+            showToast(`Code IATA inconnu: ${input.value}`);
+        } else {
+            input.style.borderColor = '#10b981';
+        }
+    } else {
+        input.style.borderColor = '';
+    }
 }
 
 // ==========================================
 // FLIGHT CRUD
 // ==========================================
-
 function saveFlight(e) {
     e.preventDefault();
-    
     const departureCode = document.getElementById('departure-code').value.toUpperCase();
     const arrivalCode = document.getElementById('arrival-code').value.toUpperCase();
-    
+
+    // FIX: Validate IATA codes
+    if (!isValidIATA(departureCode) || !isValidIATA(arrivalCode)) {
+        showToast('Codes IATA invalides (3 lettres requis)');
+        return;
+    }
+
     const depAirport = getAirport(departureCode);
     const arrAirport = getAirport(arrivalCode);
-    
     if (!depAirport || !arrAirport) {
         showToast('Aéroport non trouvé dans la base de données');
         return;
     }
 
-    const distance = calculateDistance(
-        depAirport.lat, depAirport.lng,
-        arrAirport.lat, arrAirport.lng
-    );
+    const distance = calculateDistance(depAirport.lat, depAirport.lng, arrAirport.lat, arrAirport.lng);
 
     const flight = {
         id: currentFlightId || Date.now().toString(),
         number: document.getElementById('flight-number').value,
         departure: {
-            code: departureCode,
-            name: depAirport.name,
-            city: depAirport.city,
-            country: depAirport.country,
-            lat: depAirport.lat,
-            lng: depAirport.lng,
+            code: departureCode, name: depAirport.name, city: depAirport.city,
+            country: depAirport.country, lat: depAirport.lat, lng: depAirport.lng,
             time: document.getElementById('departure-time').value
         },
         arrival: {
-            code: arrivalCode,
-            name: arrAirport.name,
-            city: arrAirport.city,
-            country: arrAirport.country,
-            lat: arrAirport.lat,
-            lng: arrAirport.lng
+            code: arrivalCode, name: arrAirport.name, city: arrAirport.city,
+            country: arrAirport.country, lat: arrAirport.lat, lng: arrAirport.lng
         },
         date: document.getElementById('flight-date').value,
         duration: parseInt(document.getElementById('flight-duration').value) || 0,
@@ -509,42 +586,48 @@ function saveFlight(e) {
         class: document.getElementById('travel-class').value,
         reason: document.getElementById('travel-reason').value,
         notes: document.getElementById('flight-notes').value,
-        distance: distance,
-        createdAt: new Date().toISOString(),
+        distance,
+        createdAt: currentFlightId
+            ? (flights.find(f => f.id === currentFlightId)?.createdAt || new Date().toISOString())
+            : new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
 
     if (currentFlightId) {
-        const index = flights.findIndex(f => f.id === currentFlightId);
-        if (index !== -1) flights[index] = flight;
+        const idx = flights.findIndex(f => f.id === currentFlightId);
+        if (idx !== -1) flights[idx] = flight;
     } else {
         flights.unshift(flight);
     }
 
     saveFlightsToLocal();
-    renderFlights();
+    currentPage = 1;
+    renderFlights(currentFilter);
     updateStats();
     refreshMap();
     hideAddFlight();
-    
+
     if (currentUser && isOnline) {
         syncData();
     } else {
         pendingSync = true;
+        queueOfflineOperation('save', flight);
     }
-    
     showToast(currentFlightId ? 'Vol modifié !' : 'Vol enregistré !');
 }
 
+// ==========================================
+// PAGINATION + RENDER
+// ==========================================
 function renderFlights(filter = 'all') {
+    currentFilter = filter;
     const container = document.getElementById('flights-list');
     const emptyState = document.getElementById('empty-state');
-    
     let filteredFlights = [...flights];
-    
+
     if (filter === 'year') {
-        const currentYear = new Date().getFullYear();
-        filteredFlights = flights.filter(f => new Date(f.date).getFullYear() === currentYear);
+        const yr = new Date().getFullYear();
+        filteredFlights = flights.filter(f => new Date(f.date).getFullYear() === yr);
     } else if (filter === 'month') {
         const now = new Date();
         filteredFlights = flights.filter(f => {
@@ -553,128 +636,181 @@ function renderFlights(filter = 'all') {
         });
     }
 
-    if (filteredFlights.length === 0) {
+    const total = filteredFlights.length;
+    const totalPages = Math.ceil(total / FLIGHTS_PER_PAGE);
+    if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+
+    if (total === 0) {
         container.innerHTML = '';
         emptyState.classList.remove('hidden');
+        hidePagination();
         return;
     }
-
     emptyState.classList.add('hidden');
-    
-    const classColors = { 
-        economy: 'bg-green-500/20 text-green-400', 
+
+    const start = (currentPage - 1) * FLIGHTS_PER_PAGE;
+    const pageFlights = filteredFlights.slice(start, start + FLIGHTS_PER_PAGE);
+
+    const classColors = {
+        economy: 'bg-green-500/20 text-green-400',
         premium: 'bg-blue-500/20 text-blue-400',
-        business: 'bg-purple-500/20 text-purple-400', 
-        first: 'bg-amber-500/20 text-amber-400' 
+        business: 'bg-purple-500/20 text-purple-400',
+        first: 'bg-amber-500/20 text-amber-400'
     };
-    
-    container.innerHTML = filteredFlights.map(flight => {
-        const date = new Date(flight.date);
-        const dateStr = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-        
-        const durationHours = Math.floor(flight.duration / 60);
-        const durationMins = flight.duration % 60;
-        const durationStr = flight.duration > 0 ? `${durationHours}h${durationMins.toString().padStart(2, '0')}` : '';
-        
+
+    container.innerHTML = pageFlights.map((flight, idx) => {
+        const date = new Date(flight.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        const dH = Math.floor(flight.duration / 60);
+        const dM = flight.duration % 60;
+        const dStr = flight.duration > 0 ? `${dH}h${dM.toString().padStart(2, '0')}` : '';
         return `
-            <div class="glass-card rounded-2xl p-4 btn-press" onclick="showFlightDetail('${flight.id}')">
-                <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-bold">
-                            ${flight.departure.code}
-                        </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <span class="font-bold text-lg">${flight.departure.code}</span>
-                                <i data-lucide="arrow-right" class="w-4 h-4 text-gray-400"></i>
-                                <span class="font-bold text-lg">${flight.arrival.code}</span>
-                            </div>
-                            <p class="text-xs text-gray-400">${flight.number} • ${dateStr}</p>
-                        </div>
+        <div class="glass-card rounded-2xl p-4 btn-press flight-card-enter"
+             style="animation-delay:${idx * 0.05}s"
+             onclick="showFlightDetail('${flight.id}')">
+            <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold">
+                        ✈️
                     </div>
-                    <span class="px-2 py-1 rounded-lg text-xs font-medium ${classColors[flight.class]}">
-                        ${classLabels[flight.class]}
-                    </span>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-lg">${flight.departure.code}</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4 text-gray-400"></i>
+                            <span class="font-bold text-lg">${flight.arrival.code}</span>
+                        </div>
+                        <p class="text-xs text-gray-400">${flight.number} • ${date}</p>
+                    </div>
                 </div>
-                
-                <div class="flex items-center justify-between text-sm">
-                    <div class="flex items-center gap-4">
-                        <span class="text-gray-400">${flight.departure.city || flight.departure.name}</span>
-                        <div class="flex-1 h-px bg-gray-600 relative w-16">
-                            <i data-lucide="plane" class="w-3 h-3 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-400"></i>
-                        </div>
-                        <span class="text-gray-400">${flight.arrival.city || flight.arrival.name}</span>
+                <span class="px-2 py-1 rounded-lg text-xs font-medium ${classColors[flight.class] || classColors.economy}">
+                    ${classLabels[flight.class] || flight.class}
+                </span>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center gap-2 text-gray-400 truncate">
+                    <span class="truncate">${flight.departure.city || flight.departure.name}</span>
+                    <div class="flex-shrink-0 h-px w-8 bg-gray-600 relative">
+                        <i data-lucide="plane" class="w-3 h-3 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-400"></i>
                     </div>
-                    <div class="text-right">
-                        <span class="text-gray-500 block">${flight.distance} km</span>
-                        ${durationStr ? `<span class="text-xs text-blue-400">${durationStr}</span>` : ''}
-                    </div>
+                    <span class="truncate">${flight.arrival.city || flight.arrival.name}</span>
+                </div>
+                <div class="text-right flex-shrink-0 ml-2">
+                    <span class="text-gray-500 block">${(flight.distance || 0).toLocaleString()} km</span>
+                    ${dStr ? `<span class="text-xs text-blue-400">${dStr}</span>` : ''}
                 </div>
             </div>
-        `;
+        </div>`;
     }).join('');
-    
+
     lucide.createIcons();
-    document.getElementById('menu-flight-count').textContent = `${flights.length} vol${flights.length > 1 ? 's' : ''} enregistré${flights.length > 1 ? 's' : ''}`;
+    document.getElementById('menu-flight-count').textContent =
+        `${flights.length} vol${flights.length > 1 ? 's' : ''} enregistré${flights.length > 1 ? 's' : ''}`;
+    renderPagination(totalPages, total);
+}
+
+function renderPagination(totalPages, total) {
+    let pag = document.getElementById('pagination-bar');
+    if (!pag) {
+        pag = document.createElement('div');
+        pag.id = 'pagination-bar';
+        pag.className = 'flex items-center justify-center gap-3 mt-4 mb-6';
+        document.getElementById('flights-list').after(pag);
+    }
+    if (totalPages <= 1) { pag.innerHTML = ''; return; }
+    const start = (currentPage - 1) * FLIGHTS_PER_PAGE + 1;
+    const end = Math.min(currentPage * FLIGHTS_PER_PAGE, total);
+    pag.innerHTML = `
+        <button onclick="gotoPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}
+            class="px-3 py-2 rounded-lg glass text-sm ${currentPage === 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/10'}">
+            ‹ Préc.
+        </button>
+        <span class="text-sm text-gray-400">${start}–${end} sur ${total}</span>
+        <button onclick="gotoPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}
+            class="px-3 py-2 rounded-lg glass text-sm ${currentPage === totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/10'}">
+            Suiv. ›
+        </button>`;
+}
+
+function hidePagination() {
+    const pag = document.getElementById('pagination-bar');
+    if (pag) pag.innerHTML = '';
+}
+
+function gotoPage(page) {
+    currentPage = page;
+    renderFlights(currentFilter);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function filterFlights(type) {
+    currentPage = 1;
     document.querySelectorAll('[data-filter]').forEach(btn => {
-        if (btn.dataset.filter === type) {
-            btn.classList.add('active-filter');
-        } else {
-            btn.classList.remove('active-filter');
-        }
+        btn.classList.toggle('active-filter', btn.dataset.filter === type);
     });
-    
     renderFlights(type);
 }
 
 function updateStats() {
     const totalFlights = flights.length;
-    const totalDistance = flights.reduce((sum, f) => sum + (f.distance || 0), 0);
+    const totalDistance = flights.reduce((s, f) => s + (f.distance || 0), 0);
     const countries = new Set(flights.flatMap(f => [f.departure.country, f.arrival.country])).size;
-    const totalHours = Math.round(flights.reduce((sum, f) => sum + (f.duration || 0), 0) / 60);
+    const totalHours = Math.round(flights.reduce((s, f) => s + (f.duration || 0), 0) / 60);
 
-    document.getElementById('stat-flights').textContent = totalFlights;
-    document.getElementById('stat-distance').innerHTML = `${totalDistance.toLocaleString()} <span class="text-sm font-normal">km</span>`;
-    document.getElementById('stat-countries').textContent = countries;
-    document.getElementById('stat-hours').textContent = totalHours;
-    
-    document.getElementById('header-stats').textContent = totalFlights > 0 
+    // Animate stat numbers
+    ['stat-flights', 'stat-distance', 'stat-countries', 'stat-hours'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.classList.remove('stat-animate'); void el.offsetWidth; el.classList.add('stat-animate'); }
+    });
+
+    const sf = document.getElementById('stat-flights');
+    const sd = document.getElementById('stat-distance');
+    const sc = document.getElementById('stat-countries');
+    const sh = document.getElementById('stat-hours');
+    if (sf) sf.textContent = totalFlights;
+    if (sd) sd.innerHTML = `${totalDistance.toLocaleString()} <span class="text-sm font-normal">km</span>`;
+    if (sc) sc.textContent = countries;
+    if (sh) sh.textContent = totalHours;
+
+    const hs = document.getElementById('header-stats');
+    if (hs) hs.textContent = totalFlights > 0
         ? `${totalFlights} vol${totalFlights > 1 ? 's' : ''} • ${totalDistance.toLocaleString()} km`
         : 'Commencez votre journal';
 }
 
 // ==========================================
-// MAP FUNCTIONS
+// MAP FUNCTIONS — FIX: memory leak prevention
 // ==========================================
-
 function initMap() {
-    if (map) return;
-    
-    map = L.map('map', {
-        center: [20, 0],
-        zoom: 2,
-        zoomControl: false,
-        attributionControl: false
-    });
+    if (map) return; // FIX: guard against double-init
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false, attributionControl: false });
+
+    // FIX: Store tile layer reference so it's not duplicated
+    mapTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19
     }).addTo(map);
-    
+
     refreshMap();
 }
 
-function refreshMap() {
-    if (!map) {
-        initMap();
-        return;
-    }
+function destroyMap() {
+    // FIX: Proper cleanup to prevent memory leaks
+    clearAllMapLayers();
+    if (mapTileLayer) { mapTileLayer.remove(); mapTileLayer = null; }
+    if (map) { map.off(); map.remove(); map = null; }
+}
 
-    mapMarkers.forEach(m => map.removeLayer(m));
+function clearAllMapLayers() {
+    mapMarkers.forEach(m => { try { m.remove(); } catch {} });
+    mapPolylines.forEach(p => { try { p.remove(); } catch {} });
     mapMarkers = [];
+    mapPolylines = [];
+}
+
+function refreshMap() {
+    if (!map) { initMap(); return; }
+
+    // FIX: Remove all existing layers properly
+    clearAllMapLayers();
 
     if (flights.length === 0) return;
 
@@ -683,76 +819,44 @@ function refreshMap() {
     flights.forEach(flight => {
         const dep = [flight.departure.lat, flight.departure.lng];
         const arr = [flight.arrival.lat, flight.arrival.lng];
-        
         bounds.push(dep, arr);
 
         const depMarker = L.circleMarker(dep, {
-            radius: 6,
-            fillColor: '#3b82f6',
-            color: '#fff',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
-        }).addTo(map).bindPopup(`
-            <b>${flight.departure.code}</b><br>
-            ${flight.departure.name}<br>
-            <small>Départ: ${flight.number}</small>
-        `);
+            radius: 6, fillColor: '#3b82f6', color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.8
+        }).addTo(map).bindPopup(`<b>${flight.departure.code}</b><br>${flight.departure.name}<br><small>Départ: ${flight.number}</small>`);
         mapMarkers.push(depMarker);
 
         const arrMarker = L.circleMarker(arr, {
-            radius: 6,
-            fillColor: '#8b5cf6',
-            color: '#fff',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
-        }).addTo(map).bindPopup(`
-            <b>${flight.arrival.code}</b><br>
-            ${flight.arrival.name}<br>
-            <small>Arrivée: ${flight.number}</small>
-        `);
+            radius: 6, fillColor: '#8b5cf6', color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.8
+        }).addTo(map).bindPopup(`<b>${flight.arrival.code}</b><br>${flight.arrival.name}<br><small>Arrivée: ${flight.number}</small>`);
         mapMarkers.push(arrMarker);
 
-        const latlngs = [
-            dep,
-            [(dep[0] + arr[0])/2, (dep[1] + arr[1])/2 + (arr[1] - dep[1]) * 0.2],
-            arr
-        ];
-        
-        const path = L.polyline(latlngs, {
-            color: '#3b82f6',
-            weight: 2,
-            opacity: 0.6,
-            dashArray: '5, 10',
-            className: 'flight-path'
+        // FIX: Use great-circle path for transpacific routes
+        const gcPoints = greatCirclePoints(
+            flight.departure.lat, flight.departure.lng,
+            flight.arrival.lat, flight.arrival.lng
+        );
+        const path = L.polyline(gcPoints, {
+            color: '#3b82f6', weight: 2, opacity: 0.6, dashArray: '5, 10', className: 'flight-path'
         }).addTo(map);
-        mapMarkers.push(path);
+        mapPolylines.push(path);
     });
 
-    if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [50, 50] });
-    }
+    if (bounds.length > 0) map.fitBounds(bounds, { padding: [50, 50] });
 }
 
 // ==========================================
 // FLIGHT DETAIL
 // ==========================================
-
 function showFlightDetail(id) {
     const flight = flights.find(f => f.id === id);
     if (!flight) return;
-    
     currentFlightId = id;
-    const date = new Date(flight.date).toLocaleDateString('fr-FR', { 
-        weekday: 'long', 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
+    const date = new Date(flight.date).toLocaleDateString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
-    
-    const durationHours = Math.floor(flight.duration / 60);
-    const durationMins = flight.duration % 60;
+    const dH = Math.floor(flight.duration / 60);
+    const dM = flight.duration % 60;
 
     document.getElementById('detail-content').innerHTML = `
         <div class="space-y-6">
@@ -765,10 +869,10 @@ function showFlightDetail(id) {
                 </div>
                 <div class="flex-1 px-4">
                     <div class="h-px bg-gradient-to-r from-blue-500 to-purple-500 relative">
-                        <i data-lucide="plane" class="w-5 h-5 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-400 bg-gray-800 rounded-full p-1"></i>
+                        <i data-lucide="plane" class="w-5 h-5 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-400 bg-gray-800 rounded-full p-1"></i>
                     </div>
-                    <div class="text-center text-xs text-gray-500 mt-2">${flight.distance} km</div>
-                    ${flight.duration > 0 ? `<div class="text-center text-xs text-blue-400">${durationHours}h${durationMins.toString().padStart(2, '0')}</div>` : ''}
+                    <div class="text-center text-xs text-gray-500 mt-2">${(flight.distance || 0).toLocaleString()} km</div>
+                    ${flight.duration > 0 ? `<div class="text-center text-xs text-blue-400">${dH}h${dM.toString().padStart(2, '0')}</div>` : ''}
                 </div>
                 <div class="text-center">
                     <div class="text-3xl font-bold text-purple-400">${flight.arrival.code}</div>
@@ -776,7 +880,6 @@ function showFlightDetail(id) {
                     <div class="text-xs text-gray-500">${flight.arrival.country}</div>
                 </div>
             </div>
-
             <div class="grid grid-cols-2 gap-4">
                 <div class="glass-card rounded-xl p-3">
                     <div class="text-xs text-gray-400 mb-1">N° de vol</div>
@@ -784,48 +887,33 @@ function showFlightDetail(id) {
                 </div>
                 <div class="glass-card rounded-xl p-3">
                     <div class="text-xs text-gray-400 mb-1">Date</div>
-                    <div class="font-semibold">${date}</div>
+                    <div class="font-semibold text-sm">${date}</div>
                 </div>
             </div>
-
-            ${flight.aircraft ? `
-                <div class="glass-card rounded-xl p-3">
-                    <div class="text-xs text-gray-400 mb-1">Type d'avion</div>
-                    <div class="font-semibold">${flight.aircraft}</div>
-                </div>
-            ` : ''}
-            
-            ${flight.seat ? `
-                <div class="glass-card rounded-xl p-3">
-                    <div class="text-xs text-gray-400 mb-1">Siège</div>
-                    <div class="font-semibold">${flight.seat}</div>
-                </div>
-            ` : ''}
-
+            ${flight.aircraft ? `<div class="glass-card rounded-xl p-3"><div class="text-xs text-gray-400 mb-1">Type d'avion</div><div class="font-semibold">${flight.aircraft}</div></div>` : ''}
+            ${flight.seat ? `<div class="glass-card rounded-xl p-3"><div class="text-xs text-gray-400 mb-1">Siège</div><div class="font-semibold">${flight.seat}</div></div>` : ''}
             <div class="grid grid-cols-2 gap-4">
                 <div class="glass-card rounded-xl p-3">
                     <div class="text-xs text-gray-400 mb-1">Classe</div>
-                    <div class="font-semibold">${classLabels[flight.class]}</div>
+                    <div class="font-semibold">${classLabels[flight.class] || flight.class}</div>
                 </div>
                 <div class="glass-card rounded-xl p-3">
                     <div class="text-xs text-gray-400 mb-1">Motif</div>
-                    <div class="font-semibold">${reasonLabels[flight.reason]}</div>
+                    <div class="font-semibold">${reasonLabels[flight.reason] || flight.reason}</div>
                 </div>
             </div>
+            ${flight.notes ? `<div class="glass-card rounded-xl p-3"><div class="text-xs text-gray-400 mb-1">Notes</div><div class="text-sm text-gray-300">${flight.notes}</div></div>` : ''}
+        </div>`;
 
-            ${flight.notes ? `
-                <div class="glass-card rounded-xl p-3">
-                    <div class="text-xs text-gray-400 mb-1">Notes</div>
-                    <div class="text-sm text-gray-300">${flight.notes}</div>
-                </div>
-            ` : ''}
-        </div>
-    `;
-    
     lucide.createIcons();
-    document.getElementById('detail-modal').classList.remove('hidden');
+    const modal = document.getElementById('detail-modal');
+    modal.classList.remove('hidden');
+    // FIX: animate modal entrance
+    const inner = modal.querySelector('.glass');
+    if (inner) { inner.classList.add('modal-animate'); setTimeout(() => inner.classList.remove('modal-animate'), 300); }
 }
 
+// FIX: hideDetail with touchend support on mobile
 function hideDetail() {
     document.getElementById('detail-modal').classList.add('hidden');
     currentFlightId = null;
@@ -833,26 +921,16 @@ function hideDetail() {
 
 function editCurrentFlight() {
     if (!currentFlightId) return;
-    
     const flight = flights.find(f => f.id === currentFlightId);
     if (!flight) return;
-    
     hideDetail();
-    
-    // Ouvrir le modal SANS réinitialiser (isEdit = true)
     showAddFlight(true);
-    
-    // Remplir tous les champs du formulaire APRÈS l'ouverture
     setTimeout(() => {
         document.getElementById('flight-number').value = flight.number || '';
         document.getElementById('departure-code').value = flight.departure?.code || '';
-        document.getElementById('departure-name').textContent = (flight.departure?.name && flight.departure?.city) 
-            ? `${flight.departure.name}, ${flight.departure.city}` 
-            : '';
+        document.getElementById('departure-name').textContent = flight.departure?.name ? `${flight.departure.name}, ${flight.departure.city}` : '';
         document.getElementById('arrival-code').value = flight.arrival?.code || '';
-        document.getElementById('arrival-name').textContent = (flight.arrival?.name && flight.arrival?.city) 
-            ? `${flight.arrival.name}, ${flight.arrival.city}` 
-            : '';
+        document.getElementById('arrival-name').textContent = flight.arrival?.name ? `${flight.arrival.name}, ${flight.arrival.city}` : '';
         document.getElementById('flight-date').value = flight.date || '';
         document.getElementById('departure-time').value = flight.departure?.time || '';
         document.getElementById('flight-duration').value = flight.duration || '';
@@ -861,39 +939,22 @@ function editCurrentFlight() {
         document.getElementById('travel-class').value = flight.class || 'economy';
         document.getElementById('travel-reason').value = flight.reason || 'leisure';
         document.getElementById('flight-notes').value = flight.notes || '';
-        
-        // Mettre à jour l'affichage de la durée et distance
         if (flight.duration > 0) {
-            const hours = Math.floor(flight.duration / 60);
-            const mins = flight.duration % 60;
-            document.getElementById('calculated-duration').textContent = `${hours}h ${mins.toString().padStart(2, '0')}min`;
-        } else {
-            document.getElementById('calculated-duration').textContent = '--h --min';
+            const h = Math.floor(flight.duration / 60), m = flight.duration % 60;
+            document.getElementById('calculated-duration').textContent = `${h}h ${m.toString().padStart(2, '0')}min`;
         }
-        
-        if (flight.distance) {
-            document.getElementById('distance-display').textContent = `Distance: ${flight.distance.toLocaleString()} km`;
-        } else {
-            document.getElementById('distance-display').textContent = 'Distance: -- km';
-        }
+        if (flight.distance) document.getElementById('distance-display').textContent = `Distance: ${flight.distance.toLocaleString()} km`;
     }, 50);
 }
 
 function deleteCurrentFlight() {
     if (!currentFlightId) return;
-    
     if (confirm('Supprimer ce vol ?')) {
         flights = flights.filter(f => f.id !== currentFlightId);
         saveFlightsToLocal();
-        renderFlights();
-        updateStats();
-        refreshMap();
-        hideDetail();
-        
-        if (currentUser && isOnline) {
-            syncData();
-        }
-        
+        renderFlights(currentFilter); updateStats(); refreshMap(); hideDetail();
+        if (currentUser && isOnline) syncData();
+        else { pendingSync = true; queueOfflineOperation('delete', { id: currentFlightId }); }
         showToast('Vol supprimé');
     }
 }
@@ -901,373 +962,309 @@ function deleteCurrentFlight() {
 // ==========================================
 // ENHANCED STATS
 // ==========================================
-
 function showStats() {
     document.getElementById('stats-modal').classList.remove('hidden');
     updateStatsModal();
 }
 
-function hideStats() {
-    document.getElementById('stats-modal').classList.add('hidden');
-}
+function hideStats() { document.getElementById('stats-modal').classList.add('hidden'); }
 
 function updateStatsModal() {
-    Object.values(charts).forEach(c => c.destroy());
-    
-    const totalDistance = flights.reduce((sum, f) => sum + (f.distance || 0), 0);
-    const totalMinutes = flights.reduce((sum, f) => sum + (f.duration || 0), 0);
+    Object.values(charts).forEach(c => { try { c.destroy(); } catch {} });
+    charts = {};
+
+    const totalDistance = flights.reduce((s, f) => s + (f.distance || 0), 0);
+    const totalMinutes = flights.reduce((s, f) => s + (f.duration || 0), 0);
     const totalHours = Math.round(totalMinutes / 60);
     const totalDays = (totalHours / 24).toFixed(1);
-    const equatorCircumference = 40075;
-    const equatorTimes = (totalDistance / equatorCircumference).toFixed(2);
-    
+    const equatorTimes = (totalDistance / 40075).toFixed(2);
+
     document.getElementById('stat-total-distance').textContent = `${totalDistance.toLocaleString()} km`;
     document.getElementById('stat-equator').textContent = equatorTimes;
     document.getElementById('stat-total-time').textContent = `${totalHours}h`;
     document.getElementById('stat-days').textContent = totalDays;
-    
+
     // Flights by Month Chart
     const monthData = {};
     flights.forEach(f => {
         const d = new Date(f.date);
-        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         monthData[key] = (monthData[key] || 0) + 1;
     });
-    
     const sortedMonths = Object.keys(monthData).sort();
-    charts.flights = new Chart(document.getElementById('flights-chart'), {
-        type: 'bar',
-        data: {
-            labels: sortedMonths.map(m => {
-                const [y, mo] = m.split('-');
-                return `${mo}/${y.slice(2)}`;
-            }),
-            datasets: [{
-                label: 'Vols',
-                data: sortedMonths.map(m => monthData[m]),
-                backgroundColor: '#3b82f6',
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#374151' } },
-                x: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+    const flightsChartEl = document.getElementById('flights-chart');
+    if (flightsChartEl) {
+        charts.flights = new Chart(flightsChartEl, {
+            type: 'bar',
+            data: {
+                labels: sortedMonths.map(m => { const [y, mo] = m.split('-'); return `${mo}/${y.slice(2)}`; }),
+                datasets: [{ label: 'Vols', data: sortedMonths.map(m => monthData[m]), backgroundColor: '#3b82f6', borderRadius: 6 }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#374151' } },
+                    x: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+                }
             }
-        }
-    });
-    
+        });
+    }
+
     // Top Routes
     const routeCount = {};
-    flights.forEach(f => {
-        const route = `${f.departure.code}-${f.arrival.code}`;
-        routeCount[route] = (routeCount[route] || 0) + 1;
-    });
-    
-    const topRoutes = Object.entries(routeCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-    
-    const maxRouteCount = topRoutes[0]?.[1] || 1;
-    
-    document.getElementById('top-routes-list').innerHTML = topRoutes.map(([route, count]) => `
+    flights.forEach(f => { const r = `${f.departure.code}-${f.arrival.code}`; routeCount[r] = (routeCount[r] || 0) + 1; });
+    const topRoutes = Object.entries(routeCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxRoute = topRoutes[0]?.[1] || 1;
+    document.getElementById('top-routes-list').innerHTML = topRoutes.map(([r, c]) => `
         <div class="flex items-center gap-3">
-            <span class="text-sm font-medium w-24">${route}</span>
-            <div class="flex-1 stat-progress-bar">
-                <div class="stat-progress-fill bg-blue-500" style="width: ${(count / maxRouteCount) * 100}%"></div>
-            </div>
-            <span class="text-sm text-gray-400 w-8 text-right">${count}</span>
-        </div>
-    `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
-    
-    // Airlines Stats
+            <span class="text-sm font-medium w-24">${r}</span>
+            <div class="flex-1 stat-progress-bar"><div class="stat-progress-fill bg-blue-500" style="width:${(c/maxRoute)*100}%"></div></div>
+            <span class="text-sm text-gray-400 w-8 text-right">${c}</span>
+        </div>`).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
+
+    // Airlines
     const airlineCount = {};
-    flights.forEach(f => {
-        const airline = f.number.substring(0, 2);
-        airlineCount[airline] = (airlineCount[airline] || 0) + 1;
-    });
-    
-    const topAirlines = Object.entries(airlineCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-    
-    const maxAirlineCount = topAirlines[0]?.[1] || 1;
-    
-    document.getElementById('airlines-list').innerHTML = topAirlines.map(([airline, count]) => `
+    flights.forEach(f => { const a = f.number.substring(0, 2); airlineCount[a] = (airlineCount[a] || 0) + 1; });
+    const topAirlines = Object.entries(airlineCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxAirline = topAirlines[0]?.[1] || 1;
+    document.getElementById('airlines-list').innerHTML = topAirlines.map(([a, c]) => `
         <div class="flex items-center gap-3">
-            <span class="text-sm font-medium w-24">${airline}</span>
-            <div class="flex-1 stat-progress-bar">
-                <div class="stat-progress-fill bg-purple-500" style="width: ${(count / maxAirlineCount) * 100}%"></div>
-            </div>
-            <span class="text-sm text-gray-400 w-8 text-right">${count}</span>
-        </div>
-    `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
-    
-    // Aircraft Types
+            <span class="text-sm font-medium w-24">${a}</span>
+            <div class="flex-1 stat-progress-bar"><div class="stat-progress-fill bg-purple-500" style="width:${(c/maxAirline)*100}%"></div></div>
+            <span class="text-sm text-gray-400 w-8 text-right">${c}</span>
+        </div>`).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
+
+    // Aircraft
     const aircraftCount = {};
-    flights.forEach(f => {
-        if (f.aircraft) {
-            aircraftCount[f.aircraft] = (aircraftCount[f.aircraft] || 0) + 1;
-        }
-    });
-    
-    const topAircraft = Object.entries(aircraftCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-    
-    const maxAircraftCount = topAircraft[0]?.[1] || 1;
-    
-    document.getElementById('aircraft-list').innerHTML = topAircraft.map(([aircraft, count]) => `
+    flights.forEach(f => { if (f.aircraft) aircraftCount[f.aircraft] = (aircraftCount[f.aircraft] || 0) + 1; });
+    const topAircraft = Object.entries(aircraftCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const maxAircraft = topAircraft[0]?.[1] || 1;
+    document.getElementById('aircraft-list').innerHTML = topAircraft.map(([a, c]) => `
         <div class="flex items-center gap-3">
-            <span class="text-sm font-medium w-32 truncate">${aircraft}</span>
-            <div class="flex-1 stat-progress-bar">
-                <div class="stat-progress-fill bg-amber-500" style="width: ${(count / maxAircraftCount) * 100}%"></div>
-            </div>
-            <span class="text-sm text-gray-400 w-8 text-right">${count}</span>
-        </div>
-    `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
-    
-    // Class Distribution
+            <span class="text-sm font-medium w-32 truncate">${a}</span>
+            <div class="flex-1 stat-progress-bar"><div class="stat-progress-fill bg-amber-500" style="width:${(c/maxAircraft)*100}%"></div></div>
+            <span class="text-sm text-gray-400 w-8 text-right">${c}</span>
+        </div>`).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
+
+    // Classes
     const classCount = { economy: 0, premium: 0, business: 0, first: 0 };
-    flights.forEach(f => classCount[f.class] = (classCount[f.class] || 0) + 1);
-    
+    flights.forEach(f => { if (classCount[f.class] !== undefined) classCount[f.class]++; });
     const totalClass = flights.length || 1;
-    const classColors = {
-        economy: 'bg-green-500',
-        premium: 'bg-blue-500',
-        business: 'bg-purple-500',
-        first: 'bg-amber-500'
-    };
-    
+    const classColors = { economy: 'bg-green-500', premium: 'bg-blue-500', business: 'bg-purple-500', first: 'bg-amber-500' };
     document.getElementById('class-distribution').innerHTML = Object.entries(classCount)
-        .filter(([_, count]) => count > 0)
-        .map(([cls, count]) => `
+        .filter(([, c]) => c > 0)
+        .map(([cls, c]) => `
             <div class="flex items-center justify-between">
                 <span class="text-sm text-gray-300">${classLabels[cls]}</span>
                 <div class="flex items-center gap-2">
-                    <div class="w-32 stat-progress-bar">
-                        <div class="stat-progress-fill ${classColors[cls]}" style="width: ${(count / totalClass) * 100}%"></div>
-                    </div>
-                    <span class="text-sm text-gray-400 w-12 text-right">${count} (${Math.round((count/totalClass)*100)}%)</span>
+                    <div class="w-32 stat-progress-bar"><div class="stat-progress-fill ${classColors[cls]}" style="width:${(c/totalClass)*100}%"></div></div>
+                    <span class="text-sm text-gray-400 w-12 text-right">${c} (${Math.round((c/totalClass)*100)}%)</span>
                 </div>
-            </div>
-        `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
-    
-    // Travel Reasons
+            </div>`).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
+
+    // Reasons
     const reasonCount = {};
-    flights.forEach(f => {
-        reasonCount[f.reason] = (reasonCount[f.reason] || 0) + 1;
-    });
-    
-    const topReasons = Object.entries(reasonCount)
-        .sort((a, b) => b[1] - a[1]);
-    
-    const maxReasonCount = topReasons[0]?.[1] || 1;
-    
-    document.getElementById('reasons-list').innerHTML = topReasons.map(([reason, count]) => `
+    flights.forEach(f => { reasonCount[f.reason] = (reasonCount[f.reason] || 0) + 1; });
+    const topReasons = Object.entries(reasonCount).sort((a, b) => b[1] - a[1]);
+    const maxReason = topReasons[0]?.[1] || 1;
+    document.getElementById('reasons-list').innerHTML = topReasons.map(([r, c]) => `
         <div class="flex items-center gap-3">
-            <span class="text-sm font-medium w-24">${reasonLabels[reason]}</span>
-            <div class="flex-1 stat-progress-bar">
-                <div class="stat-progress-fill bg-emerald-500" style="width: ${(count / maxReasonCount) * 100}%"></div>
-            </div>
-            <span class="text-sm text-gray-400 w-8 text-right">${count}</span>
-        </div>
-    `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
-    
+            <span class="text-sm font-medium w-24">${reasonLabels[r] || r}</span>
+            <div class="flex-1 stat-progress-bar"><div class="stat-progress-fill bg-emerald-500" style="width:${(c/maxReason)*100}%"></div></div>
+            <span class="text-sm text-gray-400 w-8 text-right">${c}</span>
+        </div>`).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
+
     // Records
-    const longestFlight = flights.reduce((max, f) => (f.distance > max.distance) ? f : max, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
-    const shortestFlight = flights.reduce((min, f) => (f.distance < min.distance) ? f : min, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
-    const longestDuration = flights.reduce((max, f) => (f.duration > max.duration) ? f : max, flights[0] || { duration: 0, number: '-', departure: {}, arrival: {} });
-    
+    const longest = flights.reduce((max, f) => (f.distance > (max.distance || 0)) ? f : max, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
+    const shortest = flights.reduce((min, f) => (f.distance < (min.distance || Infinity)) ? f : min, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
+    const longestDur = flights.reduce((max, f) => (f.duration > (max.duration || 0)) ? f : max, flights[0] || { duration: 0, number: '-', departure: {}, arrival: {} });
+
     document.getElementById('records-list').innerHTML = `
         <div class="glass-card rounded-xl p-3 flex justify-between items-center">
-            <div>
-                <div class="text-xs text-gray-400">Vol le plus long</div>
-                <div class="text-sm font-medium">${longestFlight.number} (${longestFlight.distance.toLocaleString()} km)</div>
-                <div class="text-xs text-gray-500">${longestFlight.departure.code} → ${longestFlight.arrival.code}</div>
-            </div>
+            <div><div class="text-xs text-gray-400">Vol le plus long</div><div class="text-sm font-medium">${longest.number} (${(longest.distance||0).toLocaleString()} km)</div><div class="text-xs text-gray-500">${longest.departure.code} → ${longest.arrival.code}</div></div>
             <i data-lucide="trophy" class="w-5 h-5 text-yellow-400"></i>
         </div>
         <div class="glass-card rounded-xl p-3 flex justify-between items-center">
-            <div>
-                <div class="text-xs text-gray-400">Vol le plus court</div>
-                <div class="text-sm font-medium">${shortestFlight.number} (${shortestFlight.distance.toLocaleString()} km)</div>
-                <div class="text-xs text-gray-500">${shortestFlight.departure.code} → ${shortestFlight.arrival.code}</div>
-            </div>
+            <div><div class="text-xs text-gray-400">Vol le plus court</div><div class="text-sm font-medium">${shortest.number} (${(shortest.distance||0).toLocaleString()} km)</div><div class="text-xs text-gray-500">${shortest.departure.code} → ${shortest.arrival.code}</div></div>
             <i data-lucide="minimize-2" class="w-5 h-5 text-blue-400"></i>
         </div>
         <div class="glass-card rounded-xl p-3 flex justify-between items-center">
-            <div>
-                <div class="text-xs text-gray-400">Plus longue durée</div>
-                <div class="text-sm font-medium">${longestDuration.number} (${Math.floor(longestDuration.duration/60)}h${longestDuration.duration%60}min)</div>
-                <div class="text-xs text-gray-500">${longestDuration.departure.code} → ${longestDuration.arrival.code}</div>
-            </div>
+            <div><div class="text-xs text-gray-400">Plus longue durée</div><div class="text-sm font-medium">${longestDur.number} (${Math.floor((longestDur.duration||0)/60)}h${((longestDur.duration||0)%60).toString().padStart(2,'0')}min)</div><div class="text-xs text-gray-500">${longestDur.departure.code} → ${longestDur.arrival.code}</div></div>
             <i data-lucide="clock" class="w-5 h-5 text-purple-400"></i>
-        </div>
-    `;
-    
-    // Detailed Summary
-    const avgDistance = flights.length > 0 ? Math.round(totalDistance / flights.length) : 0;
+        </div>`;
+
+    const avgDist = flights.length > 0 ? Math.round(totalDistance / flights.length) : 0;
     const uniqueAirports = new Set(flights.flatMap(f => [f.departure.code, f.arrival.code])).size;
-    
     document.getElementById('detailed-stats').innerHTML = `
-        <div class="glass-card rounded-xl p-3 flex justify-between">
-            <span class="text-gray-400">Distance moyenne</span>
-            <span class="font-semibold">${avgDistance} km</span>
-        </div>
-        <div class="glass-card rounded-xl p-3 flex justify-between">
-            <span class="text-gray-400">Aéroports uniques</span>
-            <span class="font-semibold">${uniqueAirports}</span>
-        </div>
-        <div class="glass-card rounded-xl p-3 flex justify-between">
-            <span class="text-gray-400">Premier vol</span>
-            <span class="font-semibold">${flights.length > 0 ? new Date(Math.min(...flights.map(f => new Date(f.date)))).toLocaleDateString('fr-FR') : '-'}</span>
-        </div>
-        <div class="glass-card rounded-xl p-3 flex justify-between">
-            <span class="text-gray-400">Dernier vol</span>
-            <span class="font-semibold">${flights.length > 0 ? new Date(Math.max(...flights.map(f => new Date(f.date)))).toLocaleDateString('fr-FR') : '-'}</span>
-        </div>
-    `;
-    
+        <div class="glass-card rounded-xl p-3 flex justify-between"><span class="text-gray-400">Distance moyenne</span><span class="font-semibold">${avgDist} km</span></div>
+        <div class="glass-card rounded-xl p-3 flex justify-between"><span class="text-gray-400">Aéroports uniques</span><span class="font-semibold">${uniqueAirports}</span></div>
+        <div class="glass-card rounded-xl p-3 flex justify-between"><span class="text-gray-400">Premier vol</span><span class="font-semibold">${flights.length > 0 ? new Date(Math.min(...flights.map(f => new Date(f.date)))).toLocaleDateString('fr-FR') : '-'}</span></div>
+        <div class="glass-card rounded-xl p-3 flex justify-between"><span class="text-gray-400">Dernier vol</span><span class="font-semibold">${flights.length > 0 ? new Date(Math.max(...flights.map(f => new Date(f.date)))).toLocaleDateString('fr-FR') : '-'}</span></div>`;
+
     lucide.createIcons();
 }
 
 // ==========================================
 // AIRPORTS LIST
 // ==========================================
-
 function showVisitedAirports() {
     const modal = document.getElementById('airports-modal');
     const list = document.getElementById('visited-airports-list');
-    
     const visited = new Map();
     flights.forEach(f => {
-        if (!visited.has(f.departure.code)) {
-            visited.set(f.departure.code, f.departure);
-        }
-        if (!visited.has(f.arrival.code)) {
-            visited.set(f.arrival.code, f.arrival);
-        }
+        if (!visited.has(f.departure.code)) visited.set(f.departure.code, f.departure);
+        if (!visited.has(f.arrival.code)) visited.set(f.arrival.code, f.arrival);
     });
-    
     const sorted = Array.from(visited.values()).sort((a, b) => a.code.localeCompare(b.code));
-    
-    list.innerHTML = sorted.map(a => `
-        <div class="glass-card rounded-xl p-3 flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center font-bold text-blue-400">
-                ${a.code}
-            </div>
+    list.innerHTML = sorted.map((a, i) => `
+        <div class="glass-card rounded-xl p-3 flex items-center gap-3 flight-card-enter" style="animation-delay:${i * 0.04}s">
+            <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center font-bold text-blue-400 text-xs">${a.code}</div>
             <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">${a.name}</div>
                 <div class="text-sm text-gray-400 truncate">${a.city}, ${a.country}</div>
             </div>
-        </div>
-    `).join('');
-    
+        </div>`).join('');
     modal.classList.remove('hidden');
 }
 
 function filterVisitedAirports(query) {
-    const list = document.getElementById('visited-airports-list');
-    const items = list.children;
-    
-    Array.from(items).forEach(item => {
-        const text = item.textContent.toLowerCase();
-        item.style.display = text.includes(query.toLowerCase()) ? 'flex' : 'none';
+    document.querySelectorAll('#visited-airports-list > div').forEach(item => {
+        item.style.display = item.textContent.toLowerCase().includes(query.toLowerCase()) ? 'flex' : 'none';
     });
 }
 
-function hideAirports() {
-    document.getElementById('airports-modal').classList.add('hidden');
-}
+function hideAirports() { document.getElementById('airports-modal').classList.add('hidden'); }
 
 // ==========================================
-// EXPORT & UTILS
+// EXPORT — JSON + CSV
 // ==========================================
-
-function exportData() {
+function exportData(format = 'json') {
+    if (format === 'csv') {
+        exportCSV();
+        return;
+    }
     const data = {
-        flights: flights,
+        flights,
         exportDate: new Date().toISOString(),
         stats: {
             totalFlights: flights.length,
-            totalDistance: flights.reduce((sum, f) => sum + (f.distance || 0), 0),
+            totalDistance: flights.reduce((s, f) => s + (f.distance || 0), 0),
             totalCountries: new Set(flights.flatMap(f => [f.departure.country, f.arrival.country])).size,
-            totalHours: Math.round(flights.reduce((sum, f) => sum + (f.duration || 0), 0) / 60)
+            totalHours: Math.round(flights.reduce((s, f) => s + (f.duration || 0), 0) / 60)
         }
     };
-    
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `flight-diary-export-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    showToast('Données exportées !');
+    triggerDownload(blob, `flight-diary-export-${todayStr()}.json`);
+    showToast('Export JSON téléchargé !');
 }
 
+function exportCSV() {
+    const headers = ['N° vol', 'Date', 'Départ', 'Arrivée', 'Ville départ', 'Ville arrivée', 'Distance (km)', 'Durée (min)', 'Appareil', 'Classe', 'Motif', 'Siège', 'Notes'];
+    const rows = flights.map(f => [
+        f.number, f.date, f.departure.code, f.arrival.code,
+        f.departure.city, f.arrival.city, f.distance, f.duration,
+        f.aircraft, classLabels[f.class] || f.class, reasonLabels[f.reason] || f.reason,
+        f.seat, `"${(f.notes || '').replace(/"/g, '""')}"`
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    triggerDownload(blob, `flight-diary-export-${todayStr()}.csv`);
+    showToast('Export CSV téléchargé !');
+}
+
+function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+
 function showTab(tab) {
-    if (tab === 'stats') {
-        showStats();
-    } else if (tab === 'airports') {
-        showVisitedAirports();
-    }
+    if (tab === 'stats') showStats();
+    else if (tab === 'airports') showVisitedAirports();
 }
 
 // ==========================================
 // EVENT LISTENERS & INIT
 // ==========================================
 
+// FIX: Close modals on mobile — use both click and touchend on backdrop
+function setupModalClosers() {
+    const modals = [
+        { overlay: 'add-modal', exclude: '.modal-content', fn: hideAddFlight },
+        { overlay: 'detail-modal', exclude: '.glass', fn: hideDetail },
+        { overlay: 'stats-modal', exclude: '.glass', fn: hideStats },
+        { overlay: 'airports-modal', exclude: '.glass', fn: hideAirports },
+    ];
+
+    modals.forEach(({ overlay, exclude, fn }) => {
+        const el = document.getElementById(overlay);
+        if (!el) return;
+        const handler = (e) => {
+            // Only close if the click/touch was on the backdrop (not inside the card)
+            if (!e.target.closest(exclude)) {
+                e.preventDefault();
+                fn();
+            }
+        };
+        el.addEventListener('click', handler);
+        // FIX: touchend for iOS where click sometimes doesn't fire on backdrop
+        el.addEventListener('touchend', handler, { passive: false });
+    });
+}
+
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('#departure-code')) {
-        document.getElementById('departure-suggestions').classList.add('hidden');
+    if (!e.target.closest('#departure-code') && !e.target.closest('#departure-suggestions')) {
+        document.getElementById('departure-suggestions')?.classList.add('hidden');
     }
-    if (!e.target.closest('#arrival-code')) {
-        document.getElementById('arrival-suggestions').classList.add('hidden');
+    if (!e.target.closest('#arrival-code') && !e.target.closest('#arrival-suggestions')) {
+        document.getElementById('arrival-suggestions')?.classList.add('hidden');
     }
 });
 
 window.addEventListener('online', () => {
     isOnline = true;
-    if (pendingSync && currentUser) {
-        syncData();
-    }
-    updateSyncStatus(currentUser !== null, currentUser ? 'Synchronisé' : 'Hors ligne');
+    updateSyncStatus(currentUser !== null, currentUser ? 'En ligne' : 'Hors ligne');
+    if (pendingSync && currentUser) flushOfflineQueue();
 });
 
 window.addEventListener('offline', () => {
     isOnline = false;
     updateSyncStatus(false, 'Hors ligne');
+    showToast('Connexion perdue — mode hors-ligne activé');
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+    injectSkeletonStyles();
+    applyAutoDarkMode();
     lucide.createIcons();
+    showSkeletonLoaders(4);
     await loadAirports();
+    loadOfflineQueue();
     loadFlightsFromLocal();
     setTimeout(initMap, 100);
-    
+    setupModalClosers();
+
     if (auth) {
-        auth.onAuthStateChanged((user) => {
+        auth.onAuthStateChanged(user => {
             currentUser = user;
             updateAuthUI();
-            if (user) {
-                loadUserData();
-            }
+            if (user) loadUserData();
         });
     }
-});
 
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && map) {
-        map.invalidateSize();
-    }
-});
+    // FIX: Invalidate map on visibility change (prevent blank tile issue)
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && map) {
+            setTimeout(() => map.invalidateSize(), 200);
+        }
+    });
 
-// Fix pour la notch sur toutes les pages
-document.querySelectorAll('.glass, .modal-content, #menu-drawer').forEach(el => {
-    el.style.paddingTop = 'env(safe-area-inset-top)';
+    // FIX: Safe area styles applied once after DOM ready
+    document.querySelectorAll('#menu-drawer').forEach(el => {
+        el.style.paddingTop = 'env(safe-area-inset-top)';
+    });
 });

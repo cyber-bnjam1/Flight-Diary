@@ -334,9 +334,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border-radius: 12px;
     max-height: 200px;
     overflow-y: auto;
-    z-index: 50;
+    z-index: 1000;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
 }
+
+/* Force la carte Date & Heure à rester en arrière-plan */
+.glass-card {
+    position: relative;
+    z-index: 1;
+}
+
+/* La route arrow aussi */
+.route-arrow {
+    z-index: 2;
+}
+
 
 .suggestion-item {
     padding: 12px 16px;

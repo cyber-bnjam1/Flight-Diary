@@ -7,12 +7,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f172a">
     <title>Flight Diary ✈️</title>
+    
+    <!-- Favicon -->
     <link rel="icon" type="image/png" href="logo001.png">
-<link rel="apple-touch-icon" href="logo001.png">
-<meta name="apple-mobile-web-app-title" content="Flight Diary">
-
+    
     <!-- PWA Manifest -->
-<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Apple Touch Icon -->
+    <link rel="apple-touch-icon" href="logo001.png">
+    <meta name="apple-mobile-web-app-title" content="Flight Diary">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -24,7 +28,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Firebase SDK (Compat version for easier integration) -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -58,7 +62,7 @@
 
     <!-- Menu Drawer -->
     <div id="menu-drawer" class="menu-drawer glass">
-        <div class="p-6 space-y-6">
+        <div class="p-6 space-y-6 pt-safe">
             <div class="flex items-center justify-between mb-8">
                 <h2 class="text-xl font-bold">Menu</h2>
                 <button onclick="toggleMenu()" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center btn-press">
@@ -125,7 +129,7 @@
                 </button>
             </nav>
 
-            <div class="pt-6 border-t border-gray-700">
+            <div class="pt-6 border-t border-gray-700 pb-safe">
                 <div class="glass-card rounded-xl p-4">
                     <p class="text-sm text-gray-400 mb-2">Flight Diary v2.1</p>
                     <p class="text-xs text-gray-500" id="menu-flight-count">0 vol enregistré</p>
@@ -137,29 +141,23 @@
     <!-- App Container -->
     <div id="app" class="min-h-screen pb-8">
         
-        <!-- Header -->
-        <header class="glass safe-top sticky top-0 z-30 px-6 py-4">
-    <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <!-- Remplace cette div -->
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                <i data-lucide="plane" class="w-5 h-5 text-white"></i>
+        <!-- Header - CORRIGÉ : plus de logo avion, juste ton logo -->
+        <header class="glass sticky top-0 z-30 px-6 py-4 pt-safe">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <!-- TON LOGO SEUL -->
+                    <img src="logo001.png" alt="Flight Diary" class="w-10 h-10 rounded-xl object-cover">
+                    
+                    <div>
+                        <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Flight Diary</h1>
+                        <p class="text-xs text-gray-400" id="header-stats">Chargement...</p>
+                    </div>
+                </div>
+                <button onclick="toggleMenu()" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center btn-press">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
             </div>
-            
-            <!-- Par ton logo -->
-            <img src="logo001.png" alt="Flight Diary" class="w-10 h-10 rounded-xl object-cover">
-            
-            <div>
-                <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Flight Diary</h1>
-                <p class="text-xs text-gray-400" id="header-stats">Chargement...</p>
-            </div>
-        </div>
-        <button onclick="toggleMenu()" class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center btn-press">
-            <i data-lucide="menu" class="w-5 h-5"></i>
-        </button>
-    </div>
-</header>
-
+        </header>
 
         <!-- Main Content -->
         <main class="px-4 pt-4 space-y-4">
@@ -301,7 +299,7 @@
                         </div>
                     </div>
 
-                    <!-- Date & Time Section - CORRIGÉ ICI -->
+                    <!-- Date & Time Section -->
                     <div class="glass-card rounded-2xl p-3 space-y-4 overflow-hidden">
                         <div class="text-center">
                             <span class="text-xs font-medium text-purple-400 uppercase tracking-wider">Date & Heure</span>

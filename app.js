@@ -306,34 +306,39 @@ function searchAirport(query, type) {
     const suggestionsDiv = document.getElementById(`${type}-suggestions`);
     const nameDiv = document.getElementById(`${type}-name`);
     
-    if (query.length < 2) {
+    // Ne chercher que si on a exactement 3 caractères alphabétiques
+    if (query.length !== 3) {
         suggestionsDiv.classList.add('hidden');
         return;
     }
 
+    // Convertir en majuscules pour la recherche
+    const upperQuery = query.toUpperCase();
+
+    // Chercher UNIQUEMENT dans les codes IATA (pas dans le nom ni la ville)
     const matches = airportsDB.filter(a => 
-        a.code.toLowerCase().includes(query.toLowerCase()) ||
-        a.name.toLowerCase().includes(query.toLowerCase()) ||
-        a.city.toLowerCase().includes(query.toLowerCase())
-    ).slice(0, 10);
+        a.code === upperQuery
+    );
 
     if (matches.length > 0) {
-        suggestionsDiv.innerHTML = matches.map(a => `
-            <div class="suggestion-item" onclick="selectAirport('${type}', '${a.code}', '${a.name.replace(/'/g, "\\'")}', '${a.city.replace(/'/g, "\\'")}')">
-                <div class="flex items-center justify-between mb-1">
-                    <span class="font-bold text-lg text-white">${a.code}</span>
-                    <span class="text-xs text-gray-400">${a.country}</span>
-                </div>
-                <div class="text-sm text-gray-300">${a.name}</div>
-                <div class="text-xs text-gray-500">${a.city}</div>
-            </div>
-        `).join('');
-        suggestionsDiv.classList.remove('hidden');
+        // Si match exact, sélectionner automatiquement le premier
+        const a = matches[0];
+        selectAirport(type, a.code, a.name.replace(/'/g, "\\'"), a.city.replace(/'/g, "\\'"));
     } else {
-        suggestionsDiv.classList.add('hidden');
+        // Aucun aéroport trouvé avec ce code
+        suggestionsDiv.innerHTML = `
+            <div class="suggestion-item" style="cursor: default;">
+                <div class="text-sm text-gray-400">Aéroport non trouvé</div>
+            </div>
+        `;
+        suggestionsDiv.classList.remove('hidden');
+        
+        // Cacher après 2 secondes
+        setTimeout(() => {
+            suggestionsDiv.classList.add('hidden');
+        }, 2000);
     }
 }
-
 function selectAirport(type, code, name, city) {
     document.getElementById(`${type}-code`).value = code;
     document.getElementById(`${type}-name`).textContent = `${name}, ${city}`;
@@ -411,7 +416,15 @@ function toggleMenu() {
 }
 
 function showAddFlight() {
-    document.getElementById('add-modal').classList.remove('hidden');
+    const modal = document.getElementById('add-modal');
+    modal.classList.remove('hidden');
+    
+    // Scroll en haut du formulaire
+    const modalContent = modal.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.scrollTop = 0;
+    }
+    
     document.getElementById('flight-date').valueAsDate = new Date();
     
     const now = new Date();
@@ -820,25 +833,38 @@ function editCurrentFlight() {
     
     hideDetail();
     
-    document.getElementById('flight-number').value = flight.number;
-    document.getElementById('departure-code').value = flight.departure.code;
-    document.getElementById('departure-name').textContent = `${flight.departure.name}, ${flight.departure.city}`;
-    document.getElementById('arrival-code').value = flight.arrival.code;
-    document.getElementById('arrival-name').textContent = `${flight.arrival.name}, ${flight.arrival.city}`;
-    document.getElementById('flight-date').value = flight.date;
+    // Remplir tous les champs du formulaire
+    document.getElementById('flight-number').value = flight.number || '';
+    document.getElementById('departure-code').value = flight.departure.code || '';
+    document.getElementById('departure-name').textContent = flight.departure.name && flight.departure.city 
+        ? `${flight.departure.name}, ${flight.departure.city}` 
+        : '';
+    document.getElementById('arrival-code').value = flight.arrival.code || '';
+    document.getElementById('arrival-name').textContent = flight.arrival.name && flight.arrival.city 
+        ? `${flight.arrival.name}, ${flight.arrival.city}` 
+        : '';
+    document.getElementById('flight-date').value = flight.date || '';
     document.getElementById('departure-time').value = flight.departure.time || '';
     document.getElementById('flight-duration').value = flight.duration || '';
     document.getElementById('aircraft-type').value = flight.aircraft || '';
     document.getElementById('seat-number').value = flight.seat || '';
-    document.getElementById('travel-class').value = flight.class;
-    document.getElementById('travel-reason').value = flight.reason;
+    document.getElementById('travel-class').value = flight.class || 'economy';
+    document.getElementById('travel-reason').value = flight.reason || 'leisure';
     document.getElementById('flight-notes').value = flight.notes || '';
     
+    // Mettre à jour l'affichage de la durée et distance
     if (flight.duration > 0) {
         const hours = Math.floor(flight.duration / 60);
         const mins = flight.duration % 60;
         document.getElementById('calculated-duration').textContent = `${hours}h ${mins.toString().padStart(2, '0')}min`;
-        document.getElementById('distance-display').textContent = `Distance: ${flight.distance} km`;
+    } else {
+        document.getElementById('calculated-duration').textContent = '--h --min';
+    }
+    
+    if (flight.distance) {
+        document.getElementById('distance-display').textContent = `Distance: ${flight.distance.toLocaleString()} km`;
+    } else {
+        document.getElementById('distance-display').textContent = 'Distance: -- km';
     }
     
     showAddFlight();

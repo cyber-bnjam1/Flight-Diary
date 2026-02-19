@@ -419,7 +419,7 @@ function toggleMenu() {
     }
 }
 
-function showAddFlight() {
+function showAddFlight(isEdit = false) {
     const modal = document.getElementById('add-modal');
     modal.classList.remove('hidden');
     
@@ -429,19 +429,21 @@ function showAddFlight() {
         modalContent.scrollTop = 0;
     }
     
-    document.getElementById('flight-date').valueAsDate = new Date();
-    
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    document.getElementById('departure-time').value = timeStr;
-    
-    currentFlightId = null;
-    document.getElementById('flight-form').reset();
-    document.getElementById('departure-name').textContent = '';
-    document.getElementById('arrival-name').textContent = '';
-    document.getElementById('calculated-duration').textContent = '--h --min';
-    document.getElementById('distance-display').textContent = 'Distance: -- km';
-    document.getElementById('departure-time').value = timeStr;
+    // Si ce n'est pas une édition, réinitialiser le formulaire
+    if (!isEdit) {
+        currentFlightId = null;
+        document.getElementById('flight-form').reset();
+        document.getElementById('departure-name').textContent = '';
+        document.getElementById('arrival-name').textContent = '';
+        document.getElementById('calculated-duration').textContent = '--h --min';
+        document.getElementById('distance-display').textContent = 'Distance: -- km';
+        
+        // Valeurs par défaut pour un nouveau vol
+        document.getElementById('flight-date').valueAsDate = new Date();
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        document.getElementById('departure-time').value = timeStr;
+    }
 }
 
 function hideAddFlight() {
@@ -837,41 +839,44 @@ function editCurrentFlight() {
     
     hideDetail();
     
-    // Remplir tous les champs du formulaire
-    document.getElementById('flight-number').value = flight.number || '';
-    document.getElementById('departure-code').value = flight.departure.code || '';
-    document.getElementById('departure-name').textContent = flight.departure.name && flight.departure.city 
-        ? `${flight.departure.name}, ${flight.departure.city}` 
-        : '';
-    document.getElementById('arrival-code').value = flight.arrival.code || '';
-    document.getElementById('arrival-name').textContent = flight.arrival.name && flight.arrival.city 
-        ? `${flight.arrival.name}, ${flight.arrival.city}` 
-        : '';
-    document.getElementById('flight-date').value = flight.date || '';
-    document.getElementById('departure-time').value = flight.departure.time || '';
-    document.getElementById('flight-duration').value = flight.duration || '';
-    document.getElementById('aircraft-type').value = flight.aircraft || '';
-    document.getElementById('seat-number').value = flight.seat || '';
-    document.getElementById('travel-class').value = flight.class || 'economy';
-    document.getElementById('travel-reason').value = flight.reason || 'leisure';
-    document.getElementById('flight-notes').value = flight.notes || '';
+    // Ouvrir le modal SANS réinitialiser (isEdit = true)
+    showAddFlight(true);
     
-    // Mettre à jour l'affichage de la durée et distance
-    if (flight.duration > 0) {
-        const hours = Math.floor(flight.duration / 60);
-        const mins = flight.duration % 60;
-        document.getElementById('calculated-duration').textContent = `${hours}h ${mins.toString().padStart(2, '0')}min`;
-    } else {
-        document.getElementById('calculated-duration').textContent = '--h --min';
-    }
-    
-    if (flight.distance) {
-        document.getElementById('distance-display').textContent = `Distance: ${flight.distance.toLocaleString()} km`;
-    } else {
-        document.getElementById('distance-display').textContent = 'Distance: -- km';
-    }
-    
-    showAddFlight();
+    // Remplir tous les champs du formulaire APRÈS l'ouverture
+    setTimeout(() => {
+        document.getElementById('flight-number').value = flight.number || '';
+        document.getElementById('departure-code').value = flight.departure?.code || '';
+        document.getElementById('departure-name').textContent = (flight.departure?.name && flight.departure?.city) 
+            ? `${flight.departure.name}, ${flight.departure.city}` 
+            : '';
+        document.getElementById('arrival-code').value = flight.arrival?.code || '';
+        document.getElementById('arrival-name').textContent = (flight.arrival?.name && flight.arrival?.city) 
+            ? `${flight.arrival.name}, ${flight.arrival.city}` 
+            : '';
+        document.getElementById('flight-date').value = flight.date || '';
+        document.getElementById('departure-time').value = flight.departure?.time || '';
+        document.getElementById('flight-duration').value = flight.duration || '';
+        document.getElementById('aircraft-type').value = flight.aircraft || '';
+        document.getElementById('seat-number').value = flight.seat || '';
+        document.getElementById('travel-class').value = flight.class || 'economy';
+        document.getElementById('travel-reason').value = flight.reason || 'leisure';
+        document.getElementById('flight-notes').value = flight.notes || '';
+        
+        // Mettre à jour l'affichage de la durée et distance
+        if (flight.duration > 0) {
+            const hours = Math.floor(flight.duration / 60);
+            const mins = flight.duration % 60;
+            document.getElementById('calculated-duration').textContent = `${hours}h ${mins.toString().padStart(2, '0')}min`;
+        } else {
+            document.getElementById('calculated-duration').textContent = '--h --min';
+        }
+        
+        if (flight.distance) {
+            document.getElementById('distance-display').textContent = `Distance: ${flight.distance.toLocaleString()} km`;
+        } else {
+            document.getElementById('distance-display').textContent = 'Distance: -- km';
+        }
+    }, 50);
 }
 
 function deleteCurrentFlight() {

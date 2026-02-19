@@ -434,16 +434,27 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     }
 }
 
-/* Safe area pour iPhone notch */
+/* Safe area pour iPhone notch - CORRIGÉ */
 .pt-safe {
-    padding-top: max(env(safe-area-inset-top), 20px);
+    padding-top: env(safe-area-inset-top);
 }
 
 .pb-safe {
-    padding-bottom: max(env(safe-area-inset-bottom), 20px);
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Header spécifique */
-header {
-    padding-top: max(env(safe-area-inset-top), 16px);
+/* Header fixé avec marge pour la notch */
+header.glass {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: 16px;
+}
+
+/* Marge pour le contenu principal qui évite le header fixé */
+main {
+    margin-top: calc(env(safe-area-inset-top) + 80px);
 }

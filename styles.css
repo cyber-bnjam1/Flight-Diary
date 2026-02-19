@@ -433,3 +433,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
         display: none !important;
     }
 }
+
+/* Safe area pour iPhone notch */
+.pt-safe {
+    padding-top: max(env(safe-area-inset-top), 20px);
+}
+
+.pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 20px);
+}
+
+/* Header spécifique */
+header {
+    padding-top: max(env(safe-area-inset-top), 16px);
+}

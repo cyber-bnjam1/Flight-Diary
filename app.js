@@ -1,5 +1,5 @@
 // ==========================================
-// FIREBASE CONFIGURATION - À REMPLACER
+// FIREBASE CONFIGURATION - TES CREDENTIALS
 // ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyCUmAI6czL0IXczp8FgJL4aOG7B8_aAkHk",
@@ -8,9 +8,9 @@ const firebaseConfig = {
     storageBucket: "flight-diary-6be50.firebasestorage.app",
     messagingSenderId: "417972476833",
     appId: "1:417972476833:web:bc820c662dc9bb3f7f89e0"
-  };
+};
 
-// Initialize Firebase
+// Initialize Firebase (version compat pour faciliter l'intégration)
 let app, auth, db;
 let currentUser = null;
 let isOnline = navigator.onLine;
@@ -46,18 +46,61 @@ let pendingSync = false;
 
 // Aircraft cruise speeds (km/h)
 const aircraftSpeeds = {
+    // Airbus
+    'A318': 780,
+    'A319': 820,
     'A320': 840,
     'A321': 850,
-    'A330': 880,
-    'A350': 900,
+    'A319neo': 830,
+    'A320neo': 840,
+    'A321neo': 860,
+    'A330-200': 880,
+    'A330-300': 880,
+    'A330-900': 880,
+    'A350-900': 900,
+    'A350-1000': 900,
     'A380': 900,
-    'B737': 850,
-    'B747': 920,
-    'B777': 900,
-    'B787': 900,
+    // Boeing
+    'B737-700': 830,
+    'B737-800': 840,
+    'B737-900': 850,
+    'B737MAX7': 840,
+    'B737MAX8': 850,
+    'B737MAX9': 850,
+    'B747-400': 910,
+    'B747-8': 920,
+    'B757-200': 850,
+    'B767-300': 870,
+    'B777-200': 890,
+    'B777-300': 900,
+    'B777X': 920,
+    'B787-8': 900,
+    'B787-9': 900,
+    'B787-10': 900,
+    // Embraer
+    'E170': 780,
+    'E175': 790,
     'E190': 820,
-    'CRJ': 780,
-    'ATR': 550,
+    'E195': 830,
+    'E190-E2': 840,
+    'E195-E2': 850,
+    // Bombardier / Mitsubishi
+    'CRJ-200': 780,
+    'CRJ-700': 790,
+    'CRJ-900': 800,
+    'CRJ-1000': 820,
+    'Q400': 550,
+    'SpaceJet': 830,
+    // ATR / Turboprop
+    'ATR42': 550,
+    'ATR72': 550,
+    'DHC8': 500,
+    // Autres
+    'A220-100': 850,
+    'A220-300': 860,
+    'SSJ100': 830,
+    'MC21': 850,
+    'C919': 840,
     'other': 850
 };
 
@@ -180,7 +223,6 @@ async function loadUserData() {
                 refreshMap();
             }
         } else {
-            // First time user - save local data to cloud
             await syncData();
         }
         updateSyncStatus(true, 'Synchronisé');
@@ -277,10 +319,9 @@ function searchAirport(query, type) {
 
     if (matches.length > 0) {
         suggestionsDiv.innerHTML = matches.map(a => `
-            <div class="px-4 py-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-0 transition-colors" 
-                 onclick="selectAirport('${type}', '${a.code}', '${a.name.replace(/'/g, "\\'")}', '${a.city.replace(/'/g, "\\'")}')">
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-lg">${a.code}</span>
+            <div class="suggestion-item" onclick="selectAirport('${type}', '${a.code}', '${a.name.replace(/'/g, "\\'")}', '${a.city.replace(/'/g, "\\'")}')">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-lg text-white">${a.code}</span>
                     <span class="text-xs text-gray-400">${a.country}</span>
                 </div>
                 <div class="text-sm text-gray-300">${a.name}</div>
@@ -379,7 +420,6 @@ function showAddFlight() {
     
     currentFlightId = null;
     document.getElementById('flight-form').reset();
-    setRating(0);
     document.getElementById('departure-name').textContent = '';
     document.getElementById('arrival-name').textContent = '';
     document.getElementById('calculated-duration').textContent = '--h --min';
@@ -389,20 +429,8 @@ function showAddFlight() {
 
 function hideAddFlight() {
     document.getElementById('add-modal').classList.add('hidden');
-}
-
-function setRating(rating) {
-    document.getElementById('flight-rating').value = rating;
-    const stars = document.querySelectorAll('.star-btn');
-    stars.forEach((star, index) => {
-        if (index < rating) {
-            star.classList.remove('text-gray-600');
-            star.classList.add('text-yellow-400');
-        } else {
-            star.classList.add('text-gray-600');
-            star.classList.remove('text-yellow-400');
-        }
-    });
+    document.getElementById('departure-suggestions').classList.add('hidden');
+    document.getElementById('arrival-suggestions').classList.add('hidden');
 }
 
 function showToast(message) {
@@ -462,7 +490,6 @@ function saveFlight(e) {
         class: document.getElementById('travel-class').value,
         reason: document.getElementById('travel-reason').value,
         notes: document.getElementById('flight-notes').value,
-        rating: parseInt(document.getElementById('flight-rating').value),
         distance: distance,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -481,7 +508,6 @@ function saveFlight(e) {
     refreshMap();
     hideAddFlight();
     
-    // Sync if online
     if (currentUser && isOnline) {
         syncData();
     } else {
@@ -565,12 +591,6 @@ function renderFlights(filter = 'all') {
                         ${durationStr ? `<span class="text-xs text-blue-400">${durationStr}</span>` : ''}
                     </div>
                 </div>
-                
-                ${flight.rating > 0 ? `
-                    <div class="mt-2 flex gap-0.5">
-                        ${'⭐'.repeat(flight.rating)}
-                    </div>
-                ` : ''}
             </div>
         `;
     }).join('');
@@ -774,13 +794,6 @@ function showFlightDetail(id) {
                 </div>
             </div>
 
-            ${flight.rating > 0 ? `
-                <div class="glass-card rounded-xl p-3">
-                    <div class="text-xs text-gray-400 mb-1">Note</div>
-                    <div class="text-2xl">${'⭐'.repeat(flight.rating)}</div>
-                </div>
-            ` : ''}
-
             ${flight.notes ? `
                 <div class="glass-card rounded-xl p-3">
                     <div class="text-xs text-gray-400 mb-1">Notes</div>
@@ -820,7 +833,6 @@ function editCurrentFlight() {
     document.getElementById('travel-class').value = flight.class;
     document.getElementById('travel-reason').value = flight.reason;
     document.getElementById('flight-notes').value = flight.notes || '';
-    setRating(flight.rating || 0);
     
     if (flight.duration > 0) {
         const hours = Math.floor(flight.duration / 60);
@@ -865,7 +877,6 @@ function hideStats() {
 }
 
 function updateStatsModal() {
-    // Destroy existing charts
     Object.values(charts).forEach(c => c.destroy());
     
     const totalDistance = flights.reduce((sum, f) => sum + (f.distance || 0), 0);
@@ -875,7 +886,6 @@ function updateStatsModal() {
     const equatorCircumference = 40075;
     const equatorTimes = (totalDistance / equatorCircumference).toFixed(2);
     
-    // Update overview cards
     document.getElementById('stat-total-distance').textContent = `${totalDistance.toLocaleString()} km`;
     document.getElementById('stat-equator').textContent = equatorTimes;
     document.getElementById('stat-total-time').textContent = `${totalHours}h`;
@@ -976,7 +986,7 @@ function updateStatsModal() {
     
     document.getElementById('aircraft-list').innerHTML = topAircraft.map(([aircraft, count]) => `
         <div class="flex items-center gap-3">
-            <span class="text-sm font-medium w-24">${aircraft}</span>
+            <span class="text-sm font-medium w-32 truncate">${aircraft}</span>
             <div class="flex-1 stat-progress-bar">
                 <div class="stat-progress-fill bg-amber-500" style="width: ${(count / maxAircraftCount) * 100}%"></div>
             </div>
@@ -1031,28 +1041,6 @@ function updateStatsModal() {
         </div>
     `).join('') || '<p class="text-sm text-gray-500">Aucune donnée</p>';
     
-    // Ratings
-    const ratedFlights = flights.filter(f => f.rating > 0);
-    const avgRating = ratedFlights.length > 0 
-        ? (ratedFlights.reduce((sum, f) => sum + f.rating, 0) / ratedFlights.length).toFixed(1)
-        : '0.0';
-    
-    document.getElementById('avg-rating').textContent = avgRating;
-    
-    const ratingCounts = {1:0, 2:0, 3:0, 4:0, 5:0};
-    ratedFlights.forEach(f => ratingCounts[f.rating]++);
-    const maxRating = Math.max(...Object.values(ratingCounts));
-    
-    document.getElementById('rating-bars').innerHTML = [5,4,3,2,1].map(star => `
-        <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-400 w-3">${star}</span>
-            <div class="flex-1 rating-bar-bg">
-                <div class="rating-bar-fill" style="width: ${maxRating > 0 ? (ratingCounts[star] / maxRating) * 100 : 0}%"></div>
-            </div>
-            <span class="text-xs text-gray-500 w-6 text-right">${ratingCounts[star]}</span>
-        </div>
-    `).join('');
-    
     // Records
     const longestFlight = flights.reduce((max, f) => (f.distance > max.distance) ? f : max, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
     const shortestFlight = flights.reduce((min, f) => (f.distance < min.distance) ? f : min, flights[0] || { distance: 0, number: '-', departure: {}, arrival: {} });
@@ -1097,10 +1085,6 @@ function updateStatsModal() {
         <div class="glass-card rounded-xl p-3 flex justify-between">
             <span class="text-gray-400">Aéroports uniques</span>
             <span class="font-semibold">${uniqueAirports}</span>
-        </div>
-        <div class="glass-card rounded-xl p-3 flex justify-between">
-            <span class="text-gray-400">Vols notés</span>
-            <span class="font-semibold">${ratedFlights.length} / ${flights.length}</span>
         </div>
         <div class="glass-card rounded-xl p-3 flex justify-between">
             <span class="text-gray-400">Premier vol</span>
@@ -1203,7 +1187,6 @@ function showTab(tab) {
 // EVENT LISTENERS & INIT
 // ==========================================
 
-// Close suggestions when clicking outside
 document.addEventListener('click', (e) => {
     if (!e.target.closest('#departure-code')) {
         document.getElementById('departure-suggestions').classList.add('hidden');
@@ -1213,7 +1196,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Online/Offline detection
 window.addEventListener('online', () => {
     isOnline = true;
     if (pendingSync && currentUser) {
@@ -1227,14 +1209,12 @@ window.addEventListener('offline', () => {
     updateSyncStatus(false, 'Hors ligne');
 });
 
-// Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     lucide.createIcons();
     await loadAirports();
     loadFlightsFromLocal();
     setTimeout(initMap, 100);
     
-    // Check auth state
     if (auth) {
         auth.onAuthStateChanged((user) => {
             currentUser = user;
@@ -1246,7 +1226,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Handle visibility change for PWA
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && map) {
         map.invalidateSize();
